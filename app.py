@@ -1,6 +1,5 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Réplica fiel do projeto Next.js + .NET original.
 """
 import streamlit as st
 import pandas as pd
@@ -1152,65 +1151,58 @@ def page_labels(eid, ev):
     )
 
     flag_key = f"lbl_flags_{eid}"
-    if flag_key not in st.session_state: st.session_state[flag_key] = set()
-    flagged = st.session_state[flag_key]
 
-    parts_flagged = [p for p in filtered_lbl if p["Id"] in flagged]
-    base_list = parts_flagged if parts_flagged else filtered_lbl
+    # ── Seleção via multiselect nativo ────────────────────────────────────────
+    nomes_filtrados = [p["Name"] for p in filtered_lbl]
+    # Preserva seleção anterior que ainda existe na lista filtrada
+    prev_sel = st.session_state.get(flag_key + "_names", nomes_filtrados)
+    prev_sel_valid = [n for n in prev_sel if n in nomes_filtrados]
+
+    selected_names = st.multiselect(
+        "Selecionar participantes para imprimir (vazio = todos)",
+        options=nomes_filtrados,
+        default=prev_sel_valid,
+        key="lbl_multisel",
+        placeholder="Selecione nomes ou deixe vazio para imprimir todos..."
+    )
+    st.session_state[flag_key + "_names"] = selected_names
+
+    # Monta lista base
+    name_set = set(selected_names)
+    base_list = [p for p in filtered_lbl if p["Name"] in name_set] if selected_names else filtered_lbl
     parts_to_print = [p for p in base_list for _ in range(int(repeat_qty))]
     n_etiquetas = len(parts_to_print)
     n_folhas = (n_etiquetas + 13) // 14
-    sel_label = f"✔ {len(parts_flagged)} selecionado(s)" if parts_flagged else f"Todos ({len(filtered_lbl)})"
+    sel_label = f"✔ {len(base_list)} selecionado(s)" if selected_names else f"Todos ({len(filtered_lbl)})"
+
     if repeat_qty > 1:
         st.info(f"📄 **{len(base_list)}** pessoa(s) × **{repeat_qty}** cópias = **{n_etiquetas}** etiqueta(s) · **{n_folhas}** folha(s) · {sel_label}")
     else:
         st.info(f"📄 **{n_etiquetas}** etiqueta(s) · **{n_folhas}** folha(s) · {sel_label}")
 
-    # ── Botões de download — ACIMA DA LISTA ──────────────────────────────────
+    # ── Botões de download ────────────────────────────────────────────────────
     b1, b2 = st.columns(2)
     with b1:
-        if st.button("🖨️ Gerar etiqueta camisa (nome + quarto + blusa)", type="primary", use_container_width=True):
+        if st.button("🖨️ Gerar etiqueta camisa (nome + quarto + blusa)", type="primary", use_container_width=True, key="btn_camisa"):
             with st.spinner("Gerando PDF..."):
                 pdf = generate_labels_pimaco(parts_to_print, "blusa", assigns, rooms)
                 st.download_button("⬇️ Baixar PDF Camisa", pdf, "etiquetas_camisa_6182.pdf", "application/pdf", use_container_width=True)
     with b2:
-        if st.button("🖨️ Gerar etiqueta só nome", use_container_width=True):
+        if st.button("🖨️ Gerar etiqueta só nome", use_container_width=True, key="btn_nome"):
             with st.spinner("Gerando PDF..."):
                 pdf = generate_labels_pimaco(parts_to_print, "nome", assigns, rooms)
                 st.download_button("⬇️ Baixar PDF Nome", pdf, "etiquetas_nome_6182.pdf", "application/pdf", use_container_width=True)
 
+    # ── Preview da lista selecionada ──────────────────────────────────────────
     st.divider()
-
-    # ── Cabeçalho da lista com checkbox "selecionar todos" ───────────────────
-    all_ids = {p["Id"] for p in filtered_lbl}
-    all_selected = all_ids.issubset(flagged) and len(all_ids) > 0
-    hdr_chk, hdr_lbl = st.columns([1, 9])
-    with hdr_chk:
-        select_all = st.checkbox("", value=all_selected, key="lbl_select_all", label_visibility="collapsed")
-        if select_all != all_selected:
-            if select_all:
-                for p in filtered_lbl: flagged.add(p["Id"])
-            else:
-                for p in filtered_lbl: flagged.discard(p["Id"])
-            st.session_state[flag_key] = flagged; st.rerun()
-    with hdr_lbl:
-        st.markdown(f"**{'Desmarcar' if all_selected else 'Selecionar'} todos** · {len(filtered_lbl)} participante(s)")
-
-    # ── Lista com checkbox individual ─────────────────────────────────────────
+    st.markdown(f"**{len(filtered_lbl)} participante(s) disponíveis**")
     for p in filtered_lbl:
         pid = p["Id"]
-        col_flag, col_name = st.columns([1, 9])
-        with col_flag:
-            was_checked = pid in flagged
-            checked = st.checkbox("", value=was_checked, key=f"flag_{pid}", label_visibility="collapsed")
-            if checked != was_checked:
-                if checked: flagged.add(pid)
-                else: flagged.discard(pid)
-                st.session_state[flag_key] = flagged
-        with col_name:
-            quarto = pr.get(pid, "-"); shirt = SHIRT_MAP.get(p.get("ShirtSize",0),"-"); cat = p.get("Category") or "-"
-            st.markdown(f"**{p['Name']}**")
-            st.caption(f"{cat} · Quarto: {quarto} · Camisa: {shirt}")
+        marcado = p["Name"] in name_set if selected_names else True
+        quarto = pr.get(pid, "-"); shirt = SHIRT_MAP.get(p.get("ShirtSize",0),"-"); cat = p.get("Category") or "-"
+        icon = "✅" if marcado else "⬜"
+        st.markdown(f"{icon} **{p['Name']}**")
+        st.caption(f"{cat} · Quarto: {quarto} · Camisa: {shirt}")
 
 def make_gdrive_view_url(raw_url):
     """
