@@ -54,7 +54,7 @@ def age_from(birth_str):
         y, m, day = int(parts[0]), int(parts[1]), int(parts[2])
         today = date.today(); age = today.year - y
         if (today.month, today.day) < (m, day): age -= 1
-        return abs(age)  # sempre positivo
+        return abs(age)
     except: return None
 
 def parse_gender(val):
@@ -84,7 +84,6 @@ def parse_date_br(val):
     return None
 
 def time_to_minutes(t):
-    """Converte 'HH:MM' em minutos. Retorna None se inválido."""
     if not t: return None
     try:
         parts = str(t).strip().split(":")
@@ -101,14 +100,12 @@ def load_assignments(eid): return get_sb().table("RoomAssignments").select("*").
 def load_schedule(eid): return get_sb().table("ScheduleItems").select("*").eq("EventId", eid).order("Day").order("Order").execute().data or []
 
 def save_secretary_state(eid, team, dist, sec_status):
-    """Persiste estado da secretária no campo SecretaryState do evento."""
     import json
     payload = json.dumps({"team": team, "dist": dist, "status": sec_status})
     try: get_sb().table("Events").update({"SecretaryState": payload, "UpdatedAtUtc": utcnow()}).eq("Id", eid).execute()
-    except: pass  # coluna pode não existir ainda
+    except: pass
 
 def load_secretary_state(eid):
-    """Carrega estado persistido da secretária."""
     import json
     try:
         ev = load_event(eid)
@@ -138,16 +135,16 @@ def import_csv(event_id, file_bytes, replace=False):
     delim = ";" if first_line.count(";") > first_line.count(",") else ","
     df = pd.read_csv(io.StringIO(text), sep=delim, dtype=str); df.columns = [c.strip() for c in df.columns]
 
-    col_name = find_header(df.columns, ["Nome do Encontrista", "Encontrista", "Nome", "Participante"])
-    col_cat = find_header(df.columns, ["Categoria"])
-    col_email = find_header(df.columns, ["Email", "E-mail"])
-    col_gender = find_header(df.columns, ["Sexo"])
-    col_shirt = find_header(df.columns, ["Tamanho da Camisa", "Tamanho da Camisa ", "Camiseta", "Camisa"])
-    col_birth = find_header(df.columns, ["Data de Nascimento", "Nascimento"])
-    col_phone = find_header(df.columns, ["Celular", "Telefone", "Celular (WhatsApp)", "Celular/WhatsApp", "Telefone Celular", "Celular / WhatsApp", "Contato (celular)"])
+    col_name    = find_header(df.columns, ["Nome do Encontrista", "Encontrista", "Nome", "Participante"])
+    col_cat     = find_header(df.columns, ["Categoria"])
+    col_email   = find_header(df.columns, ["Email", "E-mail"])
+    col_gender  = find_header(df.columns, ["Sexo"])
+    col_shirt   = find_header(df.columns, ["Tamanho da Camisa", "Tamanho da Camisa ", "Camiseta", "Camisa"])
+    col_birth   = find_header(df.columns, ["Data de Nascimento", "Nascimento"])
+    col_phone   = find_header(df.columns, ["Celular", "Telefone", "Celular (WhatsApp)", "Celular/WhatsApp", "Telefone Celular", "Celular / WhatsApp", "Contato (celular)"])
     col_marital = find_header(df.columns, ["Estado civil", "Estado Civil"])
-    col_sector = find_header(df.columns, ["Qual nome do setor do grupo de conexão?", "Qual o nome do setor do grupo de conexão?", "Setor de Conexão", "Setor de Conexao", "Setor (Centro, Norte...)", "Setor"])
-    col_group = find_header(df.columns, ["Nome do Grupo de Conexão", "Se a sua resposta anterior foi afirmativa, qual é o nome do seu GC?", "Qual é o nome do seu GC", "nome do seu gc", "Grupo de Conexão", "Grupo de Conexao", "Nome do GC", "GC"])
+    col_sector  = find_header(df.columns, ["Qual nome do setor do grupo de conexão?", "Qual o nome do setor do grupo de conexão?", "Setor de Conexão", "Setor de Conexao", "Setor (Centro, Norte...)", "Setor"])
+    col_group   = find_header(df.columns, ["Nome do Grupo de Conexão", "Se a sua resposta anterior foi afirmativa, qual é o nome do seu GC?", "Qual é o nome do seu GC", "nome do seu gc", "Grupo de Conexão", "Grupo de Conexao", "Nome do GC", "GC"])
     col_invited = find_header(df.columns, ["Você veio a convite de alguém? Se sim, poderia me informar o nome da pessoa que o(a) convidou?", "Voce veio a convite de alguem", "Quem convidou", "Convidado por", "Indicado por", "Indicador por", "Quem indicou"])
 
     if not col_name: raise ValueError(f"Coluna 'Nome' não encontrada. Colunas: {', '.join(df.columns)}")
@@ -182,11 +179,11 @@ def distribute_rooms(event_id):
     if not enc: return 0, 0, "Nenhum encontrista encontrado."
 
     def distrib(gv):
-        rooms = sorted([r for r in all_rooms if r.get("Gender") == gv], key=lambda r: r["Capacity"])
-        people = [p for p in enc if p.get("Gender") == gv]
+        rooms   = sorted([r for r in all_rooms if r.get("Gender") == gv], key=lambda r: r["Capacity"])
+        people  = [p for p in enc if p.get("Gender") == gv]
         if not rooms or not people: return []
         seniors = sorted([p for p in people if (age_from(p.get("BirthDate")) or 0) >= 50], key=lambda p: -(age_from(p.get("BirthDate")) or 0))
-        others = sorted([p for p in people if (age_from(p.get("BirthDate")) or 0) < 50], key=lambda p: -(age_from(p.get("BirthDate")) or 0))
+        others  = sorted([p for p in people if (age_from(p.get("BirthDate")) or 0) <  50], key=lambda p: -(age_from(p.get("BirthDate")) or 0))
         total_cap = sum(r["Capacity"] for r in rooms); total_p = len(people)
         if total_cap <= 0: return []
         target = {r["Id"]: int(math.floor(total_p * r["Capacity"] / total_cap)) for r in rooms}
@@ -208,7 +205,8 @@ def distribute_rooms(event_id):
 
 # ─── PDF Generators ───────────────────────────────────────────────────────────
 def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None, rooms=None):
-    from reportlab.lib.pagesizes import A4; from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
@@ -225,15 +223,15 @@ def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None,
     ORDER = ["azul", "amarelo", "verde", "lilas", "vermelho", ""]
 
     buf = io.BytesIO()
+    # A4: 595pt, margens 30 cada → área útil = 535pt
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=30, rightMargin=30, topMargin=36, bottomMargin=36)
-    styles = getSampleStyleSheet()
-    cell_style = ParagraphStyle("cell", fontName="Helvetica", fontSize=8, leading=10)
+    styles    = getSampleStyleSheet()
+    cell_style = ParagraphStyle("cell", fontName="Helvetica",      fontSize=8, leading=10)
     hdr_style  = ParagraphStyle("hdr",  fontName="Helvetica-Bold", fontSize=8, leading=10)
     title_style = ParagraphStyle("title2", fontName="Helvetica-Bold", fontSize=13, leading=16, spaceAfter=4)
     sub_style   = ParagraphStyle("sub",   fontName="Helvetica", fontSize=9, leading=11, textColor=colors.HexColor("#555555"))
 
     def build_section(group_label, group_parts):
-        """Retorna lista de elementos platypus para uma seção."""
         elems = []
         elems.append(Paragraph(ev_name, title_style))
         elems.append(Paragraph(f"{group_label} — {len(group_parts)} pessoa(s)", sub_style))
@@ -245,42 +243,43 @@ def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None,
         ))
 
         data = [[
-            Paragraph("Nº", hdr_style),
-            Paragraph("Nome", hdr_style),
-            Paragraph("Categoria", hdr_style),
-            Paragraph("Quarto", hdr_style),
-            Paragraph("Setor / GC", hdr_style),
-            Paragraph("Convidado por", hdr_style),
+            Paragraph("Nº",           hdr_style),
+            Paragraph("Nome",         hdr_style),
+            Paragraph("Categoria",    hdr_style),
+            Paragraph("Quarto",       hdr_style),
+            Paragraph("Setor / GC",   hdr_style),
+            Paragraph("Convidado por",hdr_style),
         ]]
         row_colors = []
 
         for i, p in enumerate(sorted_parts):
-            sector = p.get("ConnectionSector") or ""
-            gc = p.get("ConnectionGroup") or "-"
+            sector   = p.get("ConnectionSector") or ""
+            gc       = p.get("ConnectionGroup") or "-"
             setor_gc = f"{sector or '-'} / {gc}" if sector else gc
-            quarto = pr.get(p["Id"], "-")
-            invited = p.get("InvitedBy") or "-"
-            cat = p.get("Category") or "-"
+            quarto   = pr.get(p["Id"], "-")
+            invited  = p.get("InvitedBy") or "-"
+            cat      = p.get("Category") or "-"
             data.append([
                 Paragraph(str(i+1), cell_style),
                 Paragraph(p.get("Name", ""), cell_style),
-                Paragraph(cat, cell_style),
-                Paragraph(quarto, cell_style),
+                Paragraph(cat,      cell_style),
+                Paragraph(quarto,   cell_style),
                 Paragraph(setor_gc, cell_style),
-                Paragraph(invited, cell_style),
+                Paragraph(invited,  cell_style),
             ])
             row_colors.append(colors.HexColor(SC.get(sk(sector), "#F9FAFB")))
 
-        col_widths = [22, 145, 75, 65, 110, 110]
+        # 30+30 margem → 535pt disponíveis
+        col_widths = [22, 145, 75, 65, 118, 110]   # soma = 535
         t = Table(data, colWidths=col_widths, repeatRows=1)
         table_style = [
-            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#E2E8F0")),
-            ("GRID", (0,0), (-1,-1), 0.4, colors.HexColor("#CBD5E1")),
-            ("VALIGN", (0,0), (-1,-1), "TOP"),
-            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("BACKGROUND",    (0,0), (-1,0), colors.HexColor("#E2E8F0")),
+            ("GRID",          (0,0), (-1,-1), 0.4, colors.HexColor("#CBD5E1")),
+            ("VALIGN",        (0,0), (-1,-1), "TOP"),
+            ("TOPPADDING",    (0,0), (-1,-1), 3),
             ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-            ("LEFTPADDING", (0,0), (-1,-1), 3),
-            ("RIGHTPADDING", (0,0), (-1,-1), 3),
+            ("LEFTPADDING",   (0,0), (-1,-1), 3),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 3),
         ]
         for i, c in enumerate(row_colors):
             table_style.append(("BACKGROUND", (0, i+1), (-1, i+1), c))
@@ -288,59 +287,107 @@ def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None,
         elems.append(t)
         return elems
 
-    # ── Separa grupos ────────────────────────────────────────────────────────
     encontristas = [p for p in participants if is_encounterist(p.get("Category"))]
     servos       = [p for p in participants if is_server(p.get("Category"))]
     equipe       = [p for p in participants if norm(p.get("Category","")).startswith("equipe")]
     outros       = [p for p in participants if not is_encounterist(p.get("Category")) and not is_server(p.get("Category")) and not norm(p.get("Category","")).startswith("equipe")]
 
-    all_elems = []
-    sections = []
+    all_elems = []; sections = []
     if encontristas: sections.append(("Encontristas", encontristas))
     if servos:       sections.append(("Servos", servos))
     if equipe:       sections.append(("Equipe", equipe))
     if outros:       sections.append(("Outros", outros))
-
-    # Se não há nenhuma das categorias conhecidas, mostra tudo junto
-    if not sections:
-        sections = [("Participantes", participants)]
+    if not sections: sections = [("Participantes", participants)]
 
     for idx, (label, grp) in enumerate(sections):
-        if idx > 0:
-            all_elems.append(PageBreak())
+        if idx > 0: all_elems.append(PageBreak())
         all_elems.extend(build_section(label, grp))
 
     doc.build(all_elems)
     return buf.getvalue()
 
+
 def generate_rooms_pdf(event_id):
-    from reportlab.lib.pagesizes import A4; from reportlab.lib import colors
+    """
+    PDF de quartos — usa Paragraph em TODAS as células para que nomes longos
+    quebrem dentro da coluna em vez de invadir colunas vizinhas.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-    from reportlab.lib.styles import getSampleStyleSheet
-    rooms = load_rooms(event_id); assigns = load_assignments(event_id); parts = load_participants(event_id)
-    pm = {p["Id"]: p for p in parts}; abr = {}
-    for a in assigns: abr.setdefault(a["RoomId"], []).append(a)
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    rooms   = load_rooms(event_id)
+    assigns = load_assignments(event_id)
+    parts   = load_participants(event_id)
+    pm      = {p["Id"]: p for p in parts}
+    abr     = {}
+    for a in assigns:
+        abr.setdefault(a["RoomId"], []).append(a)
+
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
-    styles = getSampleStyleSheet(); elems = []
+    # A4: 595pt, margens 36 cada lado → área útil = 523pt
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=36, rightMargin=36,
+                            topMargin=36,  bottomMargin=36)
+    styles = getSampleStyleSheet()
+
+    cell_style = ParagraphStyle("rcell", fontName="Helvetica",      fontSize=8, leading=10)
+    hdr_style  = ParagraphStyle("rhdr",  fontName="Helvetica-Bold", fontSize=8, leading=10)
+
+    # Colunas: Nome(210) | Idade(32) | Camisa(40) | GC(145) | Setor(96) = 523pt
+    COL_W = [210, 32, 40, 145, 96]
+
+    elems = []
     for ri, room in enumerate(rooms):
-        if ri > 0: elems.append(PageBreak())
+        if ri > 0:
+            elems.append(PageBreak())
         leader = pm.get(room.get("LeaderId")) if room.get("LeaderId") else None
+
         elems.append(Paragraph(f"Quarto: {room['Name']}", styles["Title"]))
-        elems.append(Paragraph(f"Sexo: {GENDER_MAP.get(room.get('Gender',0),'-')} · Capacidade: {room['Capacity']} · Líder: {leader['Name'] if leader else '-'}", styles["Normal"]))
+        elems.append(Paragraph(
+            f"Sexo: {GENDER_MAP.get(room.get('Gender', 0), '-')} · "
+            f"Capacidade: {room['Capacity']} · "
+            f"Líder: {leader['Name'] if leader else '-'}",
+            styles["Normal"]))
         elems.append(Spacer(1, 12))
-        data = [["Nome", "Idade", "Camisa", "GC", "Setor"]]
+
+        data = [[
+            Paragraph("Nome",   hdr_style),
+            Paragraph("Idade",  hdr_style),
+            Paragraph("Camisa", hdr_style),
+            Paragraph("GC",     hdr_style),
+            Paragraph("Setor",  hdr_style),
+        ]]
+
         for a in abr.get(room["Id"], []):
             p = pm.get(a["ParticipantId"])
             if not p: continue
             age = age_from(p.get("BirthDate"))
-            data.append([p["Name"], str(age) if age else "-", SHIRT_MAP.get(p.get("ShirtSize",0),"-"), p.get("ConnectionGroup") or "-", p.get("ConnectionSector") or "-"])
-        t = Table(data, colWidths=[180, 40, 45, 120, 80])
-        t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#F1F5F9")),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
-            ("FONTSIZE",(0,0),(-1,-1),9),("GRID",(0,0),(-1,-1),0.5,colors.HexColor("#CBD5E1")),
-            ("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),3),("BOTTOMPADDING",(0,0),(-1,-1),3)]))
+            data.append([
+                Paragraph(p["Name"],                                   cell_style),
+                Paragraph(str(age) if age else "-",                    cell_style),
+                Paragraph(SHIRT_MAP.get(p.get("ShirtSize", 0), "-"),  cell_style),
+                Paragraph(p.get("ConnectionGroup")  or "-",            cell_style),
+                Paragraph(p.get("ConnectionSector") or "-",            cell_style),
+            ])
+
+        t = Table(data, colWidths=COL_W, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
+            ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0, 0), (-1,-1), 8),
+            ("GRID",          (0, 0), (-1,-1), 0.5, colors.HexColor("#CBD5E1")),
+            ("VALIGN",        (0, 0), (-1,-1), "TOP"),
+            ("TOPPADDING",    (0, 0), (-1,-1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1,-1), 3),
+            ("LEFTPADDING",   (0, 0), (-1,-1), 3),
+            ("RIGHTPADDING",  (0, 0), (-1,-1), 3),
+        ]))
         elems.append(t)
-    doc.build(elems); return buf.getvalue()
+
+    doc.build(elems)
+    return buf.getvalue()
 
 # ─── Letters / Photos helpers ─────────────────────────────────────────────────
 def sheets_url_to_csv(url):
@@ -348,13 +395,12 @@ def sheets_url_to_csv(url):
     m = re.search(r"spreadsheets/d/([A-Za-z0-9\-_]+)", url, re.I)
     if m:
         sid = m.group(1)
-        gm = re.search(r"[?#&]gid=([0-9]+)", url, re.I)
+        gm  = re.search(r"[?#&]gid=([0-9]+)", url, re.I)
         gid = gm.group(1) if gm else "0"
         return f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&id={sid}&gid={gid}"
     return url
 
 def fetch_sheet_csv(url):
-    """Tenta buscar o CSV da planilha com fallback para gviz."""
     csv_url = sheets_url_to_csv(url)
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
@@ -362,7 +408,6 @@ def fetch_sheet_csv(url):
         if resp.status_code == 200 and len(resp.text) > 10:
             return resp.text
     except: pass
-    # Fallback: gviz/tq
     m = re.search(r"spreadsheets/d/([A-Za-z0-9\-_]+)", url, re.I)
     if m:
         sid = m.group(1); gm = re.search(r"[?#&]gid=([0-9]+)", url, re.I)
@@ -450,7 +495,7 @@ def page_event_new():
         name = st.text_input("Nome do Evento", placeholder="Encontro com Deus - Abril")
         c1, c2 = st.columns(2)
         with c1: start = st.date_input("Data Início")
-        with c2: end = st.date_input("Data Fim")
+        with c2: end   = st.date_input("Data Fim")
         loc = st.text_input("Local (opcional)", placeholder="Ex.: Sítio Betel")
         if st.form_submit_button("Salvar e abrir Dashboard", type="primary"):
             if not name or len(name) < 3: st.error("Nome mín. 3 caracteres."); return
@@ -464,7 +509,7 @@ def event_sidebar(eid):
     with st.sidebar:
         st.markdown(f"### {ev['Name']}")
         if ev.get("StartDate"): st.caption(f"📅 {fmt_date_br(ev['StartDate'])} — {fmt_date_br(ev.get('EndDate'))}")
-        if ev.get("Location"): st.caption(f"📍 {ev['Location']}")
+        if ev.get("Location"):  st.caption(f"📍 {ev['Location']}")
         st.divider()
         for k, label in {"dashboard":"📊 Dashboard","participants":"👥 Participantes","rooms":"🏠 Quartos","schedule":"📋 Cronograma","letters":"💌 Cartas","labels":"🏷️ Etiquetas","photos":"📸 Fotos","secretary":"🗂️ Secretária","settings":"⚙️ Config"}.items():
             if st.button(label, key=f"n_{k}", use_container_width=True, type="primary" if st.session_state.get("page")==k else "secondary"): st.session_state.page = k; st.rerun()
@@ -474,11 +519,11 @@ def event_sidebar(eid):
 
 def page_dashboard(eid, ev):
     st.markdown(f"## 📊 Dashboard — {ev['Name']}")
-    parts = load_participants(eid)
-    enc = [p for p in parts if is_encounterist(p.get("Category"))]
+    parts   = load_participants(eid)
+    enc     = [p for p in parts if is_encounterist(p.get("Category"))]
     srv_com = [p for p in parts if is_server_with_shirt(p.get("Category"))]
     srv_sem = [p for p in parts if is_server_no_shirt(p.get("Category"))]
-    equipe = [p for p in parts if norm(p.get("Category","")).startswith("equipe")]
+    equipe  = [p for p in parts if norm(p.get("Category","")).startswith("equipe")]
     c1,c2,c3,c4 = st.columns(4)
     c1.metric("Encontristas (M)", sum(1 for p in enc if p.get("Gender")==1))
     c2.metric("Encontristas (F)", sum(1 for p in enc if p.get("Gender")==2))
@@ -498,7 +543,7 @@ def page_participants(eid, ev):
     st.markdown(f"## 👥 Participantes — {ev['Name']}")
     with st.expander("📥 Importar CSV", expanded=False):
         uploaded = st.file_uploader("Arquivo CSV", type=["csv"], key="cu")
-        replace = st.checkbox("Substituir existentes", value=False)
+        replace  = st.checkbox("Substituir existentes", value=False)
         if st.button("Importar", type="primary") and uploaded:
             with st.spinner("Importando..."):
                 try: ok, fail = import_csv(eid, uploaded.read(), replace); st.success(f"✅ {ok} importados, {fail} falha(s)."); st.rerun()
@@ -513,27 +558,25 @@ def page_participants(eid, ev):
                 get_sb().table("Participants").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Name":pn,"Gender":GENDER_REV.get(pg,0),"ShirtSize":SHIRT_REV.get(ps,0),"Category":pc,"Phone":pp or None,"BirthDate":parse_date_br(pb) if pb else None,"ConnectionSector":psc or None,"ConnectionGroup":pgc or None,"CreatedAtUtc":utcnow()}).execute()
                 st.success(f"'{pn}' adicionado!"); st.rerun()
 
-    parts = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
+    parts  = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
     rm = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"],"-") for a in assigns}
 
-    # ── Filtros ──────────────────────────────────────────────────────────────
     fc1,fc2,fc3,fc4 = st.columns(4)
     with fc1: search = st.text_input("🔍 Nome", key="ps")
-    with fc2: fg = st.selectbox("Sexo", ["Todos","Masculino","Feminino"], key="fg")
+    with fc2: fg     = st.selectbox("Sexo", ["Todos","Masculino","Feminino"], key="fg")
     with fc3: fc_sel = st.selectbox("Categoria", ["Todas","Encontrista","Servo","Equipe"], key="fc")
-    with fc4: fsc = st.text_input("Setor", key="fsc")
+    with fc4: fsc    = st.text_input("Setor", key="fsc")
     filtered = parts
-    if search: filtered = [p for p in filtered if search.lower() in p["Name"].lower()]
-    if fg=="Masculino": filtered = [p for p in filtered if p.get("Gender")==1]
+    if search:           filtered = [p for p in filtered if search.lower() in p["Name"].lower()]
+    if fg=="Masculino":  filtered = [p for p in filtered if p.get("Gender")==1]
     elif fg=="Feminino": filtered = [p for p in filtered if p.get("Gender")==2]
     if fc_sel=="Encontrista": filtered = [p for p in filtered if is_encounterist(p.get("Category"))]
-    elif fc_sel=="Servo": filtered = [p for p in filtered if is_server(p.get("Category"))]
-    elif fc_sel=="Equipe": filtered = [p for p in filtered if norm(p.get("Category","")).startswith("equipe")]
+    elif fc_sel=="Servo":     filtered = [p for p in filtered if is_server(p.get("Category"))]
+    elif fc_sel=="Equipe":    filtered = [p for p in filtered if norm(p.get("Category","")).startswith("equipe")]
     if fsc: filtered = [p for p in filtered if fsc.lower() in norm(p.get("ConnectionSector",""))]
 
     st.markdown(f"**{len(filtered)} participante(s)**")
 
-    # ── Botões de ação — NO TOPO ──────────────────────────────────────────────
     ac1, ac2, ac3 = st.columns(3)
     with ac1:
         if st.button("📄 PDF por Setor", use_container_width=True, type="primary"):
@@ -541,38 +584,26 @@ def page_participants(eid, ev):
                 with st.spinner("Gerando PDF..."):
                     pdf = generate_sector_pdf(filtered, ev_name=ev["Name"], assigns=assigns, rooms=rooms)
                     st.download_button("⬇️ Baixar PDF", pdf, "participantes_por_setor.pdf", "application/pdf", use_container_width=True)
-            else:
-                st.warning("Nenhum participante para exportar.")
+            else: st.warning("Nenhum participante para exportar.")
     with ac2:
         if st.button("📄 Exportar CSV", use_container_width=True):
             if filtered:
-                rows_exp = [{
-                    "Nome": p["Name"],
-                    "Categoria": p.get("Category") or "-",
-                    "Sexo": GENDER_MAP.get(p.get("Gender",0),"-"),
-                    "Camisa": SHIRT_MAP.get(p.get("ShirtSize",0),"-"),
-                    "Quarto": pr.get(p["Id"],"-"),
-                    "Telefone": p.get("Phone") or "-",
-                    "Setor": p.get("ConnectionSector") or "-",
-                    "GC": p.get("ConnectionGroup") or "-",
-                    "Convidado por": p.get("InvitedBy") or "-",
-                } for p in filtered]
+                rows_exp = [{"Nome": p["Name"], "Categoria": p.get("Category") or "-",
+                    "Sexo": GENDER_MAP.get(p.get("Gender",0),"-"), "Camisa": SHIRT_MAP.get(p.get("ShirtSize",0),"-"),
+                    "Quarto": pr.get(p["Id"],"-"), "Telefone": p.get("Phone") or "-",
+                    "Setor": p.get("ConnectionSector") or "-", "GC": p.get("ConnectionGroup") or "-",
+                    "Convidado por": p.get("InvitedBy") or "-"} for p in filtered]
                 st.download_button("⬇️ Baixar CSV", pd.DataFrame(rows_exp).to_csv(index=False), "participantes.csv", "text/csv", use_container_width=True)
     with ac3:
         if st.button("🗑️ Limpar TODOS", use_container_width=True):
             sb2 = get_sb(); sb2.table("RoomAssignments").delete().eq("EventId", eid).execute(); sb2.table("Participants").delete().eq("EventId", eid).execute(); st.success("Removidos."); st.rerun()
 
     st.divider()
-
-    # ── Lista ────────────────────────────────────────────────────────────────
-    if not filtered:
-        st.info("Nenhum participante com os filtros aplicados.")
+    if not filtered: st.info("Nenhum participante com os filtros aplicados.")
     else:
         for p in filtered:
-            pid = p["Id"]
-            edit_key = f"pedit_{pid}"
-            age = age_from(p.get("BirthDate"))
-            quarto = pr.get(pid, "-")
+            pid = p["Id"]; edit_key = f"pedit_{pid}"
+            age = age_from(p.get("BirthDate")); quarto = pr.get(pid, "-")
             with st.container(border=True):
                 c1, c2, c3 = st.columns([6, 1, 1])
                 with c1:
@@ -585,21 +616,20 @@ def page_participants(eid, ev):
                 with c3:
                     if st.button("🗑️", key=f"delbtn_{pid}", use_container_width=True):
                         sb2 = get_sb(); sb2.table("RoomAssignments").delete().eq("ParticipantId", pid).execute(); sb2.table("Participants").delete().eq("Id", pid).execute(); st.rerun()
-
                 if st.session_state.get(edit_key, False):
                     with st.form(f"pform_{pid}"):
                         ea, eb = st.columns(2)
                         with ea:
-                            en = st.text_input("Nome", value=p.get("Name",""))
-                            eg = st.selectbox("Gênero", ["Masculino","Feminino","Não informado"], index=max(0, p.get("Gender",0)-1) if p.get("Gender",0)>0 else 2)
-                            ecat = st.selectbox("Categoria", CATEGORY_OPTIONS, index=CATEGORY_OPTIONS.index(p["Category"]) if p.get("Category") in CATEGORY_OPTIONS else 0)
+                            en    = st.text_input("Nome", value=p.get("Name",""))
+                            eg    = st.selectbox("Gênero", ["Masculino","Feminino","Não informado"], index=max(0, p.get("Gender",0)-1) if p.get("Gender",0)>0 else 2)
+                            ecat  = st.selectbox("Categoria", CATEGORY_OPTIONS, index=CATEGORY_OPTIONS.index(p["Category"]) if p.get("Category") in CATEGORY_OPTIONS else 0)
                             ephone = st.text_input("Telefone", value=p.get("Phone") or "")
                         with eb:
                             shirt_opts = ["-"] + SHIRT_KEYS
-                            cur_shirt = SHIRT_MAP.get(p.get("ShirtSize",0),"-")
-                            esh = st.selectbox("Camisa", shirt_opts, index=shirt_opts.index(cur_shirt) if cur_shirt in shirt_opts else 0)
-                            esc = st.text_input("Setor", value=p.get("ConnectionSector") or "")
-                            egc = st.text_input("GC", value=p.get("ConnectionGroup") or "")
+                            cur_shirt  = SHIRT_MAP.get(p.get("ShirtSize",0),"-")
+                            esh  = st.selectbox("Camisa", shirt_opts, index=shirt_opts.index(cur_shirt) if cur_shirt in shirt_opts else 0)
+                            esc  = st.text_input("Setor", value=p.get("ConnectionSector") or "")
+                            egc  = st.text_input("GC", value=p.get("ConnectionGroup") or "")
                             einv = st.text_input("Indicado por", value=p.get("InvitedBy") or "")
                         if st.form_submit_button("💾 Salvar", type="primary"):
                             get_sb().table("Participants").update({
@@ -612,20 +642,19 @@ def page_participants(eid, ev):
 
 def page_rooms(eid, ev):
     st.markdown(f"## 🏠 Quartos — {ev['Name']}")
-    parts = load_participants(eid); rooms = load_rooms(eid); assigns = load_assignments(eid)
-    pm = {p["Id"]: p for p in parts}; sb2 = get_sb()
+    parts  = load_participants(eid); rooms = load_rooms(eid); assigns = load_assignments(eid)
+    pm     = {p["Id"]: p for p in parts}; sb2 = get_sb()
 
-    # ── Contador sem quarto em cima ──────────────────────────────────────────
-    # CORREÇÃO 2: inclui gênero não informado (0) no breakdown para evitar "0 Masculino · 0 Feminino"
-    aids_top = set(a["ParticipantId"] for a in assigns)
+    # ── Alerta sem quarto ────────────────────────────────────────────────────
+    aids_top  = set(a["ParticipantId"] for a in assigns)
     unall_top = [p for p in parts if p["Id"] not in aids_top and is_encounterist(p.get("Category"))]
     if unall_top:
-        unall_m = sum(1 for p in unall_top if p.get("Gender") == 1)
-        unall_f = sum(1 for p in unall_top if p.get("Gender") == 2)
+        unall_m  = sum(1 for p in unall_top if p.get("Gender") == 1)
+        unall_f  = sum(1 for p in unall_top if p.get("Gender") == 2)
         unall_ni = len(unall_top) - unall_m - unall_f
         gender_parts = []
-        if unall_m: gender_parts.append(f"{unall_m} Masculino")
-        if unall_f: gender_parts.append(f"{unall_f} Feminino")
+        if unall_m:  gender_parts.append(f"{unall_m} Masculino")
+        if unall_f:  gender_parts.append(f"{unall_f} Feminino")
         if unall_ni: gender_parts.append(f"{unall_ni} Não informado")
         gender_str = " · ".join(gender_parts) if gender_parts else "gênero não informado"
         st.warning(f"⚠️ **{len(unall_top)} encontrista(s) sem quarto atribuído** — {gender_str}")
@@ -633,9 +662,9 @@ def page_rooms(eid, ev):
     with st.expander("➕ Novo Quarto", expanded=False):
         with st.form("nr"):
             rc1,rc2,rc3 = st.columns(3)
-            with rc1: rn = st.text_input("Nome do Quarto")
+            with rc1: rn   = st.text_input("Nome do Quarto")
             with rc2: rcap = st.number_input("Capacidade", min_value=1, value=10)
-            with rc3: rg = st.selectbox("Gênero", ["Feminino","Masculino"], key="rg")
+            with rc3: rg   = st.selectbox("Gênero", ["Feminino","Masculino"], key="rg")
             if st.form_submit_button("Criar"):
                 if not rn: st.error("Nome obrigatório."); return
                 sb2.table("Rooms").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Name":rn,"Capacity":rcap,"Gender":2 if rg=="Feminino" else 1,"CreatedAtUtc":utcnow()}).execute(); st.rerun()
@@ -652,16 +681,17 @@ def page_rooms(eid, ev):
     am = {}; aids = set()
     for a in assigns: am.setdefault(a["RoomId"], []).append(a); aids.add(a["ParticipantId"])
     for room in rooms:
-        rid = room["Id"]; occs = am.get(rid, []); leader = pm.get(room.get("LeaderId")) if room.get("LeaderId") else None
+        rid    = room["Id"]; occs   = am.get(rid, [])
+        leader = pm.get(room.get("LeaderId")) if room.get("LeaderId") else None
         with st.container(border=True):
             h1,h2,h3,h4 = st.columns([3,2,1,1])
             with h1: st.markdown(f"**{room['Name']}** ({GENDER_MAP.get(room.get('Gender',0),'-')})"); st.caption(f"{len(occs)}/{room['Capacity']} · Líder: {leader['Name'] if leader else '-'}")
             with h2:
-                # CORREÇÃO 1: inclui servos E equipe na lista de líderes
+                # Servos E Equipe podem ser líderes
                 lideres = [p for p in parts if is_server(p.get("Category")) or norm(p.get("Category","")).startswith("equipe")]
                 opts = ["(nenhum)"] + [p["Name"] for p in lideres]
-                ci = opts.index(leader["Name"]) if leader and leader["Name"] in opts else 0
-                sel = st.selectbox("Líder", opts, index=ci, key=f"l_{rid}")
+                ci   = opts.index(leader["Name"]) if leader and leader["Name"] in opts else 0
+                sel  = st.selectbox("Líder", opts, index=ci, key=f"l_{rid}")
                 if st.button("Salvar", key=f"sl_{rid}"):
                     nlid = next((p["Id"] for p in lideres if p["Name"]==sel), None) if sel!="(nenhum)" else None
                     sb2.table("Rooms").update({"LeaderId":nlid,"UpdatedAtUtc":utcnow()}).eq("Id",rid).execute(); st.rerun()
@@ -706,27 +736,17 @@ def page_rooms(eid, ev):
 
 # ─── Schedule helpers ─────────────────────────────────────────────────────────
 def schedule_sort_key(item):
-    """Ordena por horário de início (HH:MM). Itens sem horário vão pro fim."""
     t = time_to_minutes(item.get("Start", ""))
     return t if t is not None else 9999
 
 def check_schedule_conflict(items, day, new_start, new_end, exclude_id=None):
-    """
-    Retorna lista de itens que colidem com o intervalo new_start–new_end no mesmo dia.
-    Colisão: os intervalos se sobrepõem (não apenas tocam).
-    """
-    ns = time_to_minutes(new_start)
-    ne = time_to_minutes(new_end)
-    conflicts = []
+    ns = time_to_minutes(new_start); ne = time_to_minutes(new_end); conflicts = []
     for it in items:
         if it.get("Day") != day: continue
         if exclude_id and it.get("Id") == exclude_id: continue
-        es = time_to_minutes(it.get("Start"))
-        ee = time_to_minutes(it.get("End"))
+        es = time_to_minutes(it.get("Start")); ee = time_to_minutes(it.get("End"))
         if es is None or ee is None or ns is None: continue
-        # Sobreposição: um começa antes do outro terminar
-        if ns < ee and (ne is None or ne > es):
-            conflicts.append(it)
+        if ns < ee and (ne is None or ne > es): conflicts.append(it)
     return conflicts
 
 def generate_schedule_pdf(items, ev_name):
@@ -736,8 +756,7 @@ def generate_schedule_pdf(items, ev_name):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
     styles = getSampleStyleSheet(); elems = []
-    elems.append(Paragraph(f"Cronograma — {ev_name}", styles["Title"]))
-    elems.append(Spacer(1,12))
+    elems.append(Paragraph(f"Cronograma — {ev_name}", styles["Title"])); elems.append(Spacer(1,12))
     days = {}
     for it in items: days.setdefault(it.get("Day","?"), []).append(it)
     day_order = ["Sábado","Domingo"]
@@ -753,171 +772,105 @@ def generate_schedule_pdf(items, ev_name):
             ("FONTSIZE",(0,0),(-1,-1),9),("GRID",(0,0),(-1,-1),0.5,colors.HexColor("#CBD5E1")),
             ("VALIGN",(0,0),(-1,-1),"MIDDLE"),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]))
         elems.append(t); elems.append(Spacer(1,12))
-    elems.append(Spacer(1,20))
-    elems.append(Paragraph(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Normal"]))
+    elems.append(Spacer(1,20)); elems.append(Paragraph(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Normal"]))
     doc.build(elems); return buf.getvalue()
 
 def page_schedule(eid, ev):
     st.markdown(f"## 📋 Cronograma — {ev['Name']}")
-    seed_schedule(eid)
-    items = load_schedule(eid)
-
-    # ── Formulário Novo Item ──────────────────────────────────────────────────
+    seed_schedule(eid); items = load_schedule(eid)
     with st.expander("➕ Novo Item", expanded=False):
         ns_dia = st.selectbox("Dia", ["Sábado","Domingo"], key="ns_dia")
         ns_titulo = st.text_input("Título*", key="ns_titulo")
         nc1, nc2 = st.columns(2)
-        with nc1:
-            ns_inicio = st.text_input("Início (HH:MM)", key="ns_inicio")
-            ns_fim = st.text_input("Fim (HH:MM)", key="ns_fim")
-        with nc2:
-            ns_palestrante = st.text_input("Palestrante", key="ns_palestrante")
-            ns_tipo = st.selectbox("Tipo", list(KIND_REV.keys()), key="ns_tipo")
-
+        with nc1: ns_inicio = st.text_input("Início (HH:MM)", key="ns_inicio"); ns_fim = st.text_input("Fim (HH:MM)", key="ns_fim")
+        with nc2: ns_palestrante = st.text_input("Palestrante", key="ns_palestrante"); ns_tipo = st.selectbox("Tipo", list(KIND_REV.keys()), key="ns_tipo")
         if st.button("➕ Adicionar item", type="primary", key="ns_add"):
-            if not ns_titulo:
-                st.error("Título obrigatório.")
+            if not ns_titulo: st.error("Título obrigatório.")
             else:
-                # ── Verificação de conflito de horário ──────────────────────
                 conflicts = check_schedule_conflict(items, ns_dia, ns_inicio, ns_fim)
                 if conflicts:
                     conflict_list = "; ".join(f"**{c.get('Start','')}–{c.get('End','')} {c.get('Title','')}**" for c in conflicts)
                     st.warning(f"⚠️ Conflito de horário! Já existe item(ns) nesse intervalo: {conflict_list}")
                     st.caption("Corrija o horário ou confirme mesmo assim clicando abaixo.")
                     if st.button("⚡ Adicionar mesmo assim", key="ns_force"):
-                        eo = [i["Order"] for i in items if i.get("Day")==ns_dia]
-                        no = max(eo, default=-1) + 1
-                        get_sb().table("ScheduleItems").insert({
-                            "Id": str(uuid.uuid4()), "EventId": eid, "Day": ns_dia,
-                            "Start": ns_inicio, "End": ns_fim, "Title": ns_titulo,
-                            "Speaker": ns_palestrante or None, "Kind": KIND_REV[ns_tipo],
-                            "Order": no, "CreatedAtUtc": utcnow()
-                        }).execute()
+                        eo = [i["Order"] for i in items if i.get("Day")==ns_dia]; no = max(eo, default=-1) + 1
+                        get_sb().table("ScheduleItems").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Day":ns_dia,"Start":ns_inicio,"End":ns_fim,"Title":ns_titulo,"Speaker":ns_palestrante or None,"Kind":KIND_REV[ns_tipo],"Order":no,"CreatedAtUtc":utcnow()}).execute()
                         st.success(f"'{ns_titulo}' adicionado com conflito registrado."); st.rerun()
                 else:
-                    eo = [i["Order"] for i in items if i.get("Day")==ns_dia]
-                    no = max(eo, default=-1) + 1
-                    get_sb().table("ScheduleItems").insert({
-                        "Id": str(uuid.uuid4()), "EventId": eid, "Day": ns_dia,
-                        "Start": ns_inicio, "End": ns_fim, "Title": ns_titulo,
-                        "Speaker": ns_palestrante or None, "Kind": KIND_REV[ns_tipo],
-                        "Order": no, "CreatedAtUtc": utcnow()
-                    }).execute()
+                    eo = [i["Order"] for i in items if i.get("Day")==ns_dia]; no = max(eo, default=-1) + 1
+                    get_sb().table("ScheduleItems").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Day":ns_dia,"Start":ns_inicio,"End":ns_fim,"Title":ns_titulo,"Speaker":ns_palestrante or None,"Kind":KIND_REV[ns_tipo],"Order":no,"CreatedAtUtc":utcnow()}).execute()
                     st.success(f"'{ns_titulo}' adicionado!"); st.rerun()
-
-    # Export PDF
     if items:
         if st.button("📄 Exportar Cronograma PDF"):
-            pdf = generate_schedule_pdf(items, ev["Name"])
-            st.download_button("⬇️ Baixar PDF", pdf, "cronograma.pdf", "application/pdf")
-
+            pdf = generate_schedule_pdf(items, ev["Name"]); st.download_button("⬇️ Baixar PDF", pdf, "cronograma.pdf", "application/pdf")
     if not items: st.info("Cronograma vazio."); return
-
     days = {}
     for it in items: days.setdefault(it.get("Day","?"), []).append(it)
     day_order = ["Sábado","Domingo"]
     for dn in sorted(days.keys(), key=lambda d: day_order.index(d) if d in day_order else 99):
-        di = days[dn]
-        st.markdown(f"### 📅 {dn}")
-        # ── Ordena por horário de início ──────────────────────────────────
+        di = days[dn]; st.markdown(f"### 📅 {dn}")
         for it in sorted(di, key=schedule_sort_key):
             kl = KIND_MAP.get(it.get("Kind",0),"?")
             em = {"Palestra":"🎤","Louvor":"🎶","Intervalo":"☕","Refeição":"🍽️","Dinâmica":"🎯","Outro":"📌"}.get(kl,"")
             edit_key = f"edit_{it['Id']}"
             with st.container(border=True):
                 i1,i2,i3,i4 = st.columns([1,4,1,1])
-                with i1:
-                    st.markdown(f"**{it.get('Start','')}–{it.get('End','')}**")
+                with i1: st.markdown(f"**{it.get('Start','')}–{it.get('End','')}**")
                 with i2:
                     st.markdown(f"{em} **{it['Title']}**")
-                    if it.get("Speaker"):
-                        st.caption(f"🎤 {it['Speaker']}")
+                    if it.get("Speaker"): st.caption(f"🎤 {it['Speaker']}")
                 with i3:
-                    if st.button("✏️", key=f"ed_{it['Id']}"):
-                        st.session_state[edit_key] = not st.session_state.get(edit_key, False)
-                        st.rerun()
+                    if st.button("✏️", key=f"ed_{it['Id']}"): st.session_state[edit_key] = not st.session_state.get(edit_key, False); st.rerun()
                 with i4:
-                    if st.button("🗑️", key=f"ds_{it['Id']}"):
-                        get_sb().table("ScheduleItems").delete().eq("Id",it["Id"]).execute(); st.rerun()
-
+                    if st.button("🗑️", key=f"ds_{it['Id']}"): get_sb().table("ScheduleItems").delete().eq("Id",it["Id"]).execute(); st.rerun()
                 if st.session_state.get(edit_key, False):
                     with st.form(f"ef_{it['Id']}"):
                         ec1,ec2,ec3 = st.columns(3)
-                        with ec1:
-                            new_title = st.text_input("Título", value=it.get("Title",""))
-                            new_speaker = st.text_input("Palestrante", value=it.get("Speaker") or "")
-                        with ec2:
-                            new_start = st.text_input("Início", value=it.get("Start",""))
-                            new_end = st.text_input("Fim", value=it.get("End",""))
+                        with ec1: new_title = st.text_input("Título", value=it.get("Title","")); new_speaker = st.text_input("Palestrante", value=it.get("Speaker") or "")
+                        with ec2: new_start = st.text_input("Início", value=it.get("Start","")); new_end = st.text_input("Fim", value=it.get("End",""))
                         with ec3:
-                            kind_opts = list(KIND_REV.keys())
-                            cur_kind = KIND_MAP.get(it.get("Kind",0),"Outro")
+                            kind_opts = list(KIND_REV.keys()); cur_kind = KIND_MAP.get(it.get("Kind",0),"Outro")
                             new_kind = st.selectbox("Tipo", kind_opts, index=kind_opts.index(cur_kind) if cur_kind in kind_opts else 0)
-                            new_day = st.selectbox("Dia", ["Sábado","Domingo"], index=0 if it.get("Day")=="Sábado" else 1)
+                            new_day  = st.selectbox("Dia", ["Sábado","Domingo"], index=0 if it.get("Day")=="Sábado" else 1)
                         if st.form_submit_button("💾 Salvar alterações"):
-                            # Verifica conflito também no edit (excluindo o próprio item)
                             edit_conflicts = check_schedule_conflict(items, new_day, new_start, new_end, exclude_id=it["Id"])
                             if edit_conflicts:
                                 conflict_list = "; ".join(f"{c.get('Start','')}–{c.get('End','')} {c.get('Title','')}" for c in edit_conflicts)
                                 st.warning(f"⚠️ Conflito de horário com: {conflict_list} — salvo mesmo assim.")
-                            get_sb().table("ScheduleItems").update({
-                                "Title":new_title,"Speaker":new_speaker or None,
-                                "Start":new_start,"End":new_end,
-                                "Kind":KIND_REV[new_kind],"Day":new_day,
-                                "UpdatedAtUtc":utcnow()
-                            }).eq("Id",it["Id"]).execute()
+                            get_sb().table("ScheduleItems").update({"Title":new_title,"Speaker":new_speaker or None,"Start":new_start,"End":new_end,"Kind":KIND_REV[new_kind],"Day":new_day,"UpdatedAtUtc":utcnow()}).eq("Id",it["Id"]).execute()
                             st.session_state.pop(edit_key, None); st.rerun()
 
 def generate_letters_docx(participant_name, letters_list):
-    """Gera um .docx com uma carta por página para o encontrista."""
-    from docx import Document
-    from docx.shared import Pt, Inches
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx import Document; from docx.shared import Pt, Inches; from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
     for section in doc.sections:
         section.top_margin = Inches(1); section.bottom_margin = Inches(1)
         section.left_margin = Inches(1.2); section.right_margin = Inches(1.2)
     for i, carta in enumerate(letters_list):
-        if i > 0:
-            doc.add_page_break()
-        h = doc.add_paragraph()
-        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run_h = h.add_run(f"Para: {participant_name}")
-        run_h.bold = True; run_h.font.size = Pt(14)
+        if i > 0: doc.add_page_break()
+        h = doc.add_paragraph(); h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_h = h.add_run(f"Para: {participant_name}"); run_h.bold = True; run_h.font.size = Pt(14)
         doc.add_paragraph()
-        sender_p = doc.add_paragraph()
-        run_s = sender_p.add_run(f"De: {carta.get('sender','—')}")
-        run_s.bold = True; run_s.font.size = Pt(11)
+        sender_p = doc.add_paragraph(); run_s = sender_p.add_run(f"De: {carta.get('sender','—')}"); run_s.bold = True; run_s.font.size = Pt(11)
         doc.add_paragraph()
         msg_p = doc.add_paragraph(carta.get("message",""))
         if msg_p.runs: msg_p.runs[0].font.size = Pt(11)
         doc.add_paragraph()
-        footer_p = doc.add_paragraph(f"— Carta {i+1} de {len(letters_list)} —")
-        footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        footer_p = doc.add_paragraph(f"— Carta {i+1} de {len(letters_list)} —"); footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         if footer_p.runs: footer_p.runs[0].font.size = Pt(9)
     buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf.getvalue()
 
 def page_letters(eid, ev):
     st.markdown(f"## 💌 Cartas — {ev['Name']}")
-    url = ev.get("LettersSheetUrl") or ""
-    parts = load_participants(eid); enc = [p for p in parts if is_encounterist(p.get("Category"))]
-
-    if not url:
-        st.warning("⚠️ URL da planilha de cartas não configurada. Acesse **Configurações** para adicionar.")
-        return
-
-    dl_key = f"letters_dl_{eid}"
-    prev_counts_key = f"letters_prev_counts_{eid}"
-
+    url = ev.get("LettersSheetUrl") or ""; parts = load_participants(eid); enc = [p for p in parts if is_encounterist(p.get("Category"))]
+    if not url: st.warning("⚠️ URL da planilha de cartas não configurada. Acesse **Configurações** para adicionar."); return
+    dl_key = f"letters_dl_{eid}"; prev_counts_key = f"letters_prev_counts_{eid}"
     dl_info = st.session_state.get(dl_key)
-    if dl_info:
-        st.caption(f"📥 Último carregamento: **{dl_info['ts']}** · {dl_info['total']} carta(s)")
-
+    if dl_info: st.caption(f"📥 Último carregamento: **{dl_info['ts']}** · {dl_info['total']} carta(s)")
     if st.button("🔍 Carregar cartas", type="primary"):
         with st.spinner("Lendo..."):
             try:
-                text = fetch_sheet_csv(url)
-                df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
+                text = fetch_sheet_csv(url); df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
                 ct = find_header(df.columns, ["Para quem","Destinatário","Para","Nome do Encontrista","Encontrista","Nome do encontrista:","Nome do encontrista"])
                 cf = find_header(df.columns, ["De quem","Remetente","De","Nome de quem escreve","Seu nome","Seu nome:"])
                 cm = find_header(df.columns, ["Mensagem","Carta","Texto","Conteúdo","Escreva algo especial para ele(a) aqui:","Escreva algo especial para ele(a) aqui","Mensagem para ele(a)"])
@@ -930,49 +883,33 @@ def page_letters(eid, ev):
                     msg = safe_str(row.get(cm)) or ""
                     if to and msg: letters.setdefault(to, []).append({"sender": sender, "message": msg})
                 total = sum(len(v) for v in letters.values())
-                old_letters = st.session_state.get(f"letters_data_{eid}", {})
-                old_counts = {}
+                old_letters = st.session_state.get(f"letters_data_{eid}", {}); old_counts = {}
                 for p2 in enc:
                     c2 = sum(len(lts) for k2, lts in old_letters.items() if norm(k2)==norm(p2["Name"]) or p2["Name"].lower() in k2.lower() or k2.lower() in p2["Name"].lower())
                     old_counts[p2["Id"]] = c2
                 st.session_state[prev_counts_key] = old_counts
                 st.session_state[dl_key] = {"ts": datetime.now().strftime("%d/%m/%Y às %H:%M"), "total": total}
-                st.session_state[f"letters_data_{eid}"] = letters
-                st.success(f"✅ {total} carta(s) carregadas")
+                st.session_state[f"letters_data_{eid}"] = letters; st.success(f"✅ {total} carta(s) carregadas")
             except Exception as e:
                 st.error(f"Erro ao carregar planilha: {e}")
-                st.caption("💡 Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link pode ver'.")
-                return
-
-    letters = st.session_state.get(f"letters_data_{eid}", {})
-    prev_counts = st.session_state.get(prev_counts_key, {})
-    sec_status = st.session_state.get(f"sec_status_{eid}", {})
-
+                st.caption("💡 Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link pode ver'."); return
+    letters = st.session_state.get(f"letters_data_{eid}", {}); prev_counts = st.session_state.get(prev_counts_key, {}); sec_status = st.session_state.get(f"sec_status_{eid}", {})
     st.divider()
     sem_carta = sum(1 for p in enc if sum(len(lts) for key, lts in letters.items() if norm(key)==norm(p["Name"]) or p["Name"].lower() in key.lower() or key.lower() in p["Name"].lower()) == 0)
     st.markdown(f"**{len(enc)} encontrista(s)** · {sem_carta} sem carta recebida")
-
     search_l = st.text_input("🔍 Filtrar por nome", key="ltr_search")
     enc_filtrado = [p for p in enc if search_l.lower() in p["Name"].lower()] if search_l else enc
-
     for p in enc_filtrado:
         pn = p["Name"]; ml = []
         for key, lts in letters.items():
-            if norm(key)==norm(pn) or pn.lower() in key.lower() or key.lower() in pn.lower():
-                ml.extend(lts)
-        count = len(ml)
-
-        prev_p = prev_counts.get(p["Id"], count)
-        novas_p = max(0, count - prev_p)
+            if norm(key)==norm(pn) or pn.lower() in key.lower() or key.lower() in pn.lower(): ml.extend(lts)
+        count = len(ml); prev_p = prev_counts.get(p["Id"], count); novas_p = max(0, count - prev_p)
         novas_str = f" · **+{novas_p} nova(s)**" if novas_p > 0 else ""
-
         finalizado = sec_status.get(p["Id"], {}).get("bolsa_ok", False)
         if finalizado: icon = "✅"; label_extra = " — FINALIZADO ✅"
         else: icon = "🚨" if count==0 else ("⚠️" if count<=3 else "✅"); label_extra = ""
-
         col_info, col_btn = st.columns([6, 2])
-        with col_info:
-            st.markdown(f"{icon} **{pn}** — {count} carta(s){novas_str}{label_extra}")
+        with col_info: st.markdown(f"{icon} **{pn}** — {count} carta(s){novas_str}{label_extra}")
         with col_btn:
             if count > 0:
                 try:
@@ -981,91 +918,69 @@ def page_letters(eid, ev):
                     st.download_button("⬇️ Download", docx_bytes, f"cartas_{nome_arquivo}.docx",
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         key=f"dl_docx_{p['Id']}", use_container_width=True)
-                except Exception as e:
-                    st.error(f"Erro: {e}")
-            else:
-                st.caption("Sem cartas" if letters else "—")
+                except Exception as e: st.error(f"Erro: {e}")
+            else: st.caption("Sem cartas" if letters else "—")
 
+# ─── Labels — Pimaco 6182 ────────────────────────────────────────────────────
 def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
     """
-    Gera PDF no formato Pimaco 6182.
-    Especificações reais: 33,9 x 101,6 mm · 2 colunas × 7 linhas = 14 etiquetas/folha.
-    Papel Carta (215,9 × 279,4 mm).
-    Margens: lateral 6,35 mm · topo 21,05 mm · gap entre colunas = 0 (etiquetas coladas).
+    PDF Pimaco 6182 — especificações físicas verificadas:
+      Etiqueta : 101,6 mm × 33,9 mm (largura × altura)
+      Layout   : 2 colunas × 7 linhas = 14 etiquetas/folha
+      Papel    : Carta / US Letter  (215,9 × 279,4 mm)
+      Margem esquerda  : 6,35 mm
+      Margem superior  : 21,05 mm  →  (279,4 - 7 × 33,9) / 2 = 21,05 mm ✓
+      Gap entre colunas: 0 mm      →  2 × 101,6 + 2 × 6,35 = 215,9 mm ✓
+      Gap entre linhas : 0 mm
     """
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas as rl_canvas
-    from reportlab.lib import colors as rl_colors
     import math as _math
 
-    MM = 2.8346  # 1 mm em pontos
+    MM = 2.8346  # 1 mm em pontos ReportLab
 
     rm = {r["Id"]: r["Name"] for r in rooms}
     pr = {a["ParticipantId"]: rm.get(a["RoomId"], "-") for a in assigns}
 
-    # Papel carta em pontos
-    PAGE_W, PAGE_H = letter  # 612 × 792 pt
+    PAGE_W, PAGE_H = letter          # 612 × 792 pt
 
-    # Dimensões da etiqueta em pontos
-    LBL_W = 101.6 * MM   # 288.0 pt
-    LBL_H = 33.9  * MM   #  96.1 pt
+    LBL_W    = 101.6 * MM            # 287,87 pt
+    LBL_H    =  33.9 * MM            #  96,09 pt
+    COLS     = 2
+    ROWS     = 7
+    PER_PAGE = COLS * ROWS           # 14
 
-    # Layout: 2 colunas × 7 linhas = 14 por folha
-    COLS = 2
-    ROWS = 7
-
-    # Margens Pimaco 6182 (calculadas das medidas físicas)
-    MARGIN_LEFT = 6.35 * MM   # 18.0 pt
-    MARGIN_TOP  = PAGE_H - (21.05 * MM)  # topo da primeira linha (y do topo da folha menos margem)
-
-    PER_PAGE = COLS * ROWS  # 14
+    MARGIN_LEFT = 6.35  * MM         # 18,0 pt
+    MARGIN_TOP  = PAGE_H - (21.05 * MM)   # y do topo da 1ª linha
 
     def draw_name_wrapped(c, text, x, y, max_w, font_bold, font_size_big, font_size_small):
-        """Desenha nome — quebra em 2 linhas se necessário, ou reduz fonte."""
         font = font_bold
-        # Tenta tamanho original
         c.setFont(font, font_size_big)
         if c.stringWidth(text, font, font_size_big) <= max_w:
-            c.drawString(x, y, text)
-            return font_size_big
-
-        # Tenta quebrar em 2 linhas pelo espaço mais próximo do meio
-        words = text.split()
-        best_split = 1
-        best_diff = float("inf")
+            c.drawString(x, y, text); return font_size_big
+        words = text.split(); best_split = 1; best_diff = float("inf")
         for i in range(1, len(words)):
             l1 = " ".join(words[:i]); l2 = " ".join(words[i:])
             w1 = c.stringWidth(l1, font, font_size_big); w2 = c.stringWidth(l2, font, font_size_big)
             if w1 <= max_w and w2 <= max_w:
                 diff = abs(w1 - w2)
                 if diff < best_diff: best_diff = diff; best_split = i
-
         l1 = " ".join(words[:best_split]); l2 = " ".join(words[best_split:])
         w1 = c.stringWidth(l1, font, font_size_big); w2 = c.stringWidth(l2, font, font_size_big)
-
         if w1 <= max_w and w2 <= max_w:
             line_h = font_size_big + 1
-            c.drawString(x, y + line_h / 2, l1)
-            c.drawString(x, y + line_h / 2 - line_h, l2)
+            c.drawString(x, y + line_h / 2, l1); c.drawString(x, y + line_h / 2 - line_h, l2)
             return font_size_big
-
-        # Se não coube em 2 linhas, reduz fonte progressivamente
         for fs in range(font_size_big - 1, 5, -1):
             c.setFont(font, fs)
             if c.stringWidth(text, font, fs) <= max_w:
-                c.drawString(x, y, text)
-                return fs
-
-        # Último recurso: trunca
+                c.drawString(x, y, text); return fs
         c.setFont(font, 7)
-        while c.stringWidth(text, font, 7) > max_w and len(text) > 4:
-            text = text[:-1]
-        c.drawString(x, y, text + ("…" if len(text) < len(text) else ""))
-        return 7
+        while c.stringWidth(text, font, 7) > max_w and len(text) > 4: text = text[:-1]
+        c.drawString(x, y, text); return 7
 
-    buf = io.BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=letter)
-
+    buf   = io.BytesIO()
+    c     = rl_canvas.Canvas(buf, pagesize=letter)
     total = len(parts_sel)
     pages = _math.ceil(total / PER_PAGE) if total else 1
 
@@ -1074,111 +989,83 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
         for idx, p in enumerate(batch):
             col = idx % COLS
             row = idx // COLS
-
-            # Coordenada x (esquerda da etiqueta)
             x = MARGIN_LEFT + col * LBL_W
-            # Coordenada y (base da etiqueta — ReportLab usa y de baixo pra cima)
-            y = MARGIN_TOP - (row + 1) * LBL_H
+            y = MARGIN_TOP  - (row + 1) * LBL_H
 
-            # Borda leve
-            c.setStrokeColorRGB(0.80, 0.80, 0.80)
-            c.setLineWidth(0.3)
+            c.setStrokeColorRGB(0.80, 0.80, 0.80); c.setLineWidth(0.3)
             c.rect(x, y, LBL_W, LBL_H)
 
-            # Área de texto com padding interno
-            PAD = 6 * MM  # 6 mm de padding lateral
-            txt_x = x + PAD
+            PAD      = 5 * MM
+            txt_x    = x + PAD
             txt_max_w = LBL_W - 2 * PAD
 
             if label_type == "nome":
-                # ── Só nome — centralizado verticalmente ──────────────────
-                name = p.get("Name", "")
+                name     = p.get("Name", "")
                 center_y = y + LBL_H / 2 - 5
                 draw_name_wrapped(c, name, txt_x, center_y, txt_max_w, "Helvetica-Bold", 11, 9)
 
             elif label_type == "blusa":
-                # ── Nome + Quarto + Blusa ─────────────────────────────────
-                name = p.get("Name", "")
+                name   = p.get("Name", "")
                 quarto = pr.get(p["Id"], "-")
-                shirt = SHIRT_MAP.get(p.get("ShirtSize", 0), "-")
-
-                # Nome no topo
+                shirt  = SHIRT_MAP.get(p.get("ShirtSize", 0), "-")
                 name_y = y + LBL_H - 20
                 draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 10, 8)
-
-                # Quarto e blusa na parte inferior
                 c.setFont("Helvetica", 7.5)
                 c.drawString(txt_x, y + 18, f"Quarto: {quarto}")
-                c.drawString(txt_x, y + 7, f"Blusa: {shirt}")
+                c.drawString(txt_x, y + 7,  f"Blusa: {shirt}")
 
             else:
-                # ── Padrão: Nome + Categoria + Quarto ────────────────────
-                name = p.get("Name", "")
-                cat = p.get("Category") or "-"
+                name   = p.get("Name", "")
+                cat    = p.get("Category") or "-"
                 quarto = pr.get(p["Id"], "-")
-
                 name_y = y + LBL_H - 20
                 draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 10, 8)
-
                 c.setFont("Helvetica", 7.5)
                 c.drawString(txt_x, y + 18, cat[:40])
-                c.drawString(txt_x, y + 7, f"Quarto: {quarto}")
+                c.drawString(txt_x, y + 7,  f"Quarto: {quarto}")
 
-        if pg < pages - 1:
-            c.showPage()
+        if pg < pages - 1: c.showPage()
 
     c.save()
     return buf.getvalue()
 
 def page_labels(eid, ev):
     st.markdown(f"## 🏷️ Etiquetas — {ev['Name']}")
-    st.caption("Modelo: **Pimaco 6182** · Inkjet + Laser · Carta · 33,9 × 101,6 mm · **14 etiquetas/folha** (2 col × 7 lin)")
-    parts = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
-    rm = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"],"-") for a in assigns}
+    st.caption("Modelo: **Pimaco 6182** · Inkjet + Laser · Carta · 101,6 × 33,9 mm · **14 etiquetas/folha** (2 col × 7 lin)")
+    parts  = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
+    rm     = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"],"-") for a in assigns}
 
-    # ── Filtros ──────────────────────────────────────────────────────────────
     f1, f2, f3 = st.columns(3)
     with f1: search_lbl = st.text_input("🔍 Buscar por nome", key="lbl_search")
-    with f2: cat_lbl = st.selectbox("Categoria", ["Todos","Encontrista","Servo","Equipe"], key="lbl_cat")
+    with f2: cat_lbl    = st.selectbox("Categoria", ["Todos","Encontrista","Servo","Equipe"], key="lbl_cat")
     with f3:
         room_opts = ["Todos os quartos"] + sorted([r["Name"] for r in rooms])
-        room_lbl = st.selectbox("🏠 Quarto", room_opts, key="lbl_room")
+        room_lbl  = st.selectbox("🏠 Quarto", room_opts, key="lbl_room")
 
     filtered_lbl = parts
     if search_lbl: filtered_lbl = [p for p in filtered_lbl if search_lbl.lower() in p["Name"].lower()]
     if cat_lbl == "Encontrista": filtered_lbl = [p for p in filtered_lbl if is_encounterist(p.get("Category"))]
-    elif cat_lbl == "Servo": filtered_lbl = [p for p in filtered_lbl if is_server(p.get("Category"))]
-    elif cat_lbl == "Equipe": filtered_lbl = [p for p in filtered_lbl if norm(p.get("Category","")).startswith("equipe")]
+    elif cat_lbl == "Servo":     filtered_lbl = [p for p in filtered_lbl if is_server(p.get("Category"))]
+    elif cat_lbl == "Equipe":    filtered_lbl = [p for p in filtered_lbl if norm(p.get("Category","")).startswith("equipe")]
     if room_lbl != "Todos os quartos":
         filtered_lbl = [p for p in filtered_lbl if pr.get(p["Id"], "-") == room_lbl]
 
-    # ── Repetição em sequência ────────────────────────────────────────────────
-    repeat_qty = st.number_input(
-        "🔁 Cópias em sequência por pessoa",
-        min_value=1, max_value=20, value=1, step=1, key="lbl_repeat",
-        help="Ex: 3 = João João João Maria Maria Maria"
-    )
+    repeat_qty = st.number_input("🔁 Cópias em sequência por pessoa", min_value=1, max_value=20, value=1, step=1, key="lbl_repeat",
+        help="Ex: 3 = João João João Maria Maria Maria")
 
     flag_key = f"lbl_flags_{eid}"
     if flag_key not in st.session_state: st.session_state[flag_key] = set()
     flagged = st.session_state[flag_key]
 
-    # ── Placeholder para o resumo e botões — será preenchido DEPOIS da lista ──
-    summary_placeholder = st.empty()
-    btn_placeholder = st.empty()
-    st.divider()
+    summary_placeholder = st.empty(); btn_placeholder = st.empty(); st.divider()
 
-    # ── Cabeçalho da lista com checkbox "selecionar todos" ───────────────────
-    all_ids = {p["Id"] for p in filtered_lbl}
+    all_ids      = {p["Id"] for p in filtered_lbl}
     all_selected = len(all_ids) > 0 and all_ids.issubset(flagged)
     some_selected = bool(flagged & all_ids)
 
     hdr_chk, hdr_lbl = st.columns([1, 9])
     with hdr_chk:
-        select_all = st.checkbox(
-            "", value=all_selected, key="lbl_select_all",
-            label_visibility="collapsed"
-        )
+        select_all = st.checkbox("", value=all_selected, key="lbl_select_all", label_visibility="collapsed")
         if select_all and not all_selected:
             for p in filtered_lbl: flagged.add(p["Id"])
             st.session_state[flag_key] = flagged; st.rerun()
@@ -1186,49 +1073,32 @@ def page_labels(eid, ev):
             for p in filtered_lbl: flagged.discard(p["Id"])
             st.session_state[flag_key] = flagged; st.rerun()
     with hdr_lbl:
-        if all_selected:
-            st.markdown(f"**Desmarcar todos** · {len(filtered_lbl)} selecionado(s)")
-        elif some_selected:
-            st.markdown(f"**Selecionar todos** · {len(flagged & all_ids)} de {len(filtered_lbl)} selecionado(s)")
-        else:
-            st.markdown(f"**Selecionar todos** · {len(filtered_lbl)} participante(s)")
+        if all_selected:    st.markdown(f"**Desmarcar todos** · {len(filtered_lbl)} selecionado(s)")
+        elif some_selected: st.markdown(f"**Selecionar todos** · {len(flagged & all_ids)} de {len(filtered_lbl)} selecionado(s)")
+        else:               st.markdown(f"**Selecionar todos** · {len(filtered_lbl)} participante(s)")
 
-    # ── Lista com checkbox individual ─────────────────────────────────────────
     render_key = hash(frozenset(flagged)) % 999999
     for p in filtered_lbl:
         pid = p["Id"]
         col_flag, col_name = st.columns([1, 9])
         with col_flag:
-            checked = st.checkbox(
-                "", value=(pid in flagged),
-                key=f"flag_{pid}_{render_key}",
-                label_visibility="collapsed"
-            )
-            if checked and pid not in flagged:
-                flagged.add(pid); st.session_state[flag_key] = flagged; st.rerun()
-            elif not checked and pid in flagged:
-                flagged.discard(pid); st.session_state[flag_key] = flagged; st.rerun()
+            checked = st.checkbox("", value=(pid in flagged), key=f"flag_{pid}_{render_key}", label_visibility="collapsed")
+            if checked and pid not in flagged: flagged.add(pid); st.session_state[flag_key] = flagged; st.rerun()
+            elif not checked and pid in flagged: flagged.discard(pid); st.session_state[flag_key] = flagged; st.rerun()
         with col_name:
             quarto = pr.get(pid, "-"); shirt = SHIRT_MAP.get(p.get("ShirtSize",0),"-"); cat = p.get("Category") or "-"
-            st.markdown(f"**{p['Name']}**")
-            st.caption(f"{cat} · Quarto: {quarto} · Camisa: {shirt}")
+            st.markdown(f"**{p['Name']}**"); st.caption(f"{cat} · Quarto: {quarto} · Camisa: {shirt}")
 
-    # ── Agora calcula com o estado ATUAL do flagged (após renderizar a lista) ──
-    parts_flagged = [p for p in filtered_lbl if p["Id"] in flagged]
-    base_list = parts_flagged if parts_flagged else filtered_lbl
+    parts_flagged  = [p for p in filtered_lbl if p["Id"] in flagged]
+    base_list      = parts_flagged if parts_flagged else filtered_lbl
     parts_to_print = [p for p in base_list for _ in range(int(repeat_qty))]
-    n_etiquetas = len(parts_to_print)
-    n_folhas = (n_etiquetas + 13) // 14
-    sel_label = f"✔ {len(parts_flagged)} selecionado(s)" if parts_flagged else f"Todos ({len(filtered_lbl)})"
+    n_etiquetas    = len(parts_to_print); n_folhas = (n_etiquetas + 13) // 14
+    sel_label      = f"✔ {len(parts_flagged)} selecionado(s)" if parts_flagged else f"Todos ({len(filtered_lbl)})"
 
-    # Preenche o placeholder do resumo
     with summary_placeholder:
-        if repeat_qty > 1:
-            st.info(f"📄 **{len(base_list)}** pessoa(s) × **{repeat_qty}** cópias = **{n_etiquetas}** etiqueta(s) · **{n_folhas}** folha(s) · {sel_label}")
-        else:
-            st.info(f"📄 **{n_etiquetas}** etiqueta(s) · **{n_folhas}** folha(s) · {sel_label}")
+        if repeat_qty > 1: st.info(f"📄 **{len(base_list)}** pessoa(s) × **{repeat_qty}** cópias = **{n_etiquetas}** etiqueta(s) · **{n_folhas}** folha(s) · {sel_label}")
+        else:              st.info(f"📄 **{n_etiquetas}** etiqueta(s) · **{n_folhas}** folha(s) · {sel_label}")
 
-    # Preenche o placeholder dos botões
     with btn_placeholder.container():
         b1, b2 = st.columns(2)
         with b1:
@@ -1243,59 +1113,33 @@ def page_labels(eid, ev):
                     st.download_button("⬇️ Baixar PDF Nome", pdf, "etiquetas_nome_6182.pdf", "application/pdf", use_container_width=True)
 
 def make_gdrive_view_url(raw_url):
-    """
-    Converte qualquer link do Google Drive para URL de visualização direta no navegador.
-    Suporta: /open?id=, /file/d/, /uc?id=, ID puro.
-    """
     if not raw_url: return None
-    raw_url = raw_url.strip()
-    # Tenta extrair o file ID
-    fid = None
-    # /open?id=XXX  ou  /uc?id=XXX  ou  ?id=XXX
+    raw_url = raw_url.strip(); fid = None
     m = re.search(r"[?&]id=([A-Za-z0-9\-_]+)", raw_url, re.I)
     if m: fid = m.group(1)
-    # /file/d/XXX/
     if not fid:
         m = re.search(r"/d/([A-Za-z0-9\-_]+)", raw_url, re.I)
         if m: fid = m.group(1)
-    # ID puro
-    if not fid and re.match(r"^[A-Za-z0-9\-_]{20,}$", raw_url):
-        fid = raw_url
-    if fid:
-        return f"https://drive.google.com/file/d/{fid}/view"
-    return raw_url  # devolve original se não reconheceu
+    if not fid and re.match(r"^[A-Za-z0-9\-_]{20,}$", raw_url): fid = raw_url
+    if fid: return f"https://drive.google.com/file/d/{fid}/view"
+    return raw_url
 
 def page_photos(eid, ev):
     st.markdown(f"## 📸 Fotos — {ev['Name']}")
-    url = ev.get("PhotosSheetUrl") or ""
-    parts = load_participants(eid); enc = [p for p in parts if is_encounterist(p.get("Category"))]
-
-    if not url:
-        st.warning("⚠️ URL da planilha de fotos não configurada. Acesse **Configurações** para adicionar.")
-        return
-
+    url = ev.get("PhotosSheetUrl") or ""; parts = load_participants(eid); enc = [p for p in parts if is_encounterist(p.get("Category"))]
+    if not url: st.warning("⚠️ URL da planilha de fotos não configurada. Acesse **Configurações** para adicionar."); return
     dl_key = f"photos_dl_{eid}"; prev_key = f"photos_prev_count_{eid}"
     dl_info = st.session_state.get(dl_key)
     if dl_info:
-        prev_count = st.session_state.get(prev_key, dl_info["total"])
-        new_count = dl_info["total"]
+        prev_count = st.session_state.get(prev_key, dl_info["total"]); new_count = dl_info["total"]
         delta_str = f" · **+{new_count - prev_count} nova(s)**" if new_count > prev_count else ""
         st.info(f"📥 Último carregamento: **{dl_info['ts']}** · {new_count} foto(s) mapeadas{delta_str}")
-
     if st.button("🔄 Atualizar", type="primary"):
         with st.spinner("Lendo planilha..."):
             try:
-                text = fetch_sheet_csv(url)
-                df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
-                # Colunas do encontrista — inclui "Nome do Encontrista" e variações do formulário
-                cn = find_header(df.columns, [
-                    "Nome do Encontrista", "Nome do encontrista:", "Nome do encontrista",
-                    "Encontrista", "Nome"
-                ])
-                # Colunas de foto — inclui "Foto" e variações
-                cp = find_header(df.columns, [
-                    "Foto", "Fotos", "URL da Foto", "URL das Fotos", "URL", "Link"
-                ])
+                text = fetch_sheet_csv(url); df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
+                cn = find_header(df.columns, ["Nome do Encontrista", "Nome do encontrista:", "Nome do encontrista", "Encontrista", "Nome"])
+                cp = find_header(df.columns, ["Foto", "Fotos", "URL da Foto", "URL das Fotos", "URL", "Link"])
                 if not cn: st.error(f"Coluna 'Nome do Encontrista' não encontrada. Colunas: {', '.join(df.columns)}"); return
                 if not cp: st.error(f"Coluna 'Foto' não encontrada. Colunas: {', '.join(df.columns)}"); return
                 groups = {}
@@ -1306,118 +1150,71 @@ def page_photos(eid, ev):
                         for lk in photo.split(","):
                             lk = lk.strip()
                             if lk: groups[name].append(lk)
-                total = sum(len(v) for v in groups.values())
-                prev = st.session_state.get(dl_key, {}).get("total", total)
-                st.session_state[prev_key] = prev
-                st.session_state[dl_key] = {"ts": datetime.now().strftime("%d/%m/%Y às %H:%M"), "total": total}
-                st.session_state[f"photo_groups_{eid}"] = groups
-                st.session_state[f"photos_loaded_{eid}"] = True
+                total = sum(len(v) for v in groups.values()); prev = st.session_state.get(dl_key, {}).get("total", total)
+                st.session_state[prev_key] = prev; st.session_state[dl_key] = {"ts": datetime.now().strftime("%d/%m/%Y às %H:%M"), "total": total}
+                st.session_state[f"photo_groups_{eid}"] = groups; st.session_state[f"photos_loaded_{eid}"] = True
                 st.success(f"✅ {len(groups)} encontrista(s) com fotos — {total} foto(s) mapeadas.")
             except Exception as e:
                 st.error(f"Erro ao carregar planilha: {e}")
                 st.caption("💡 Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link pode ver'.")
-
-    groups = st.session_state.get(f"photo_groups_{eid}", {})
-    loaded = st.session_state.get(f"photos_loaded_{eid}", False)
-    sec_status = st.session_state.get(f"sec_status_{eid}", {})
-
+    groups = st.session_state.get(f"photo_groups_{eid}", {}); loaded = st.session_state.get(f"photos_loaded_{eid}", False); sec_status = st.session_state.get(f"sec_status_{eid}", {})
     st.divider()
-    sem_foto = sum(1 for p in enc if not any(
-        norm(p["Name"])==norm(n) or p["Name"].lower() in n.lower() or n.lower() in p["Name"].lower()
-        for n in groups))
+    sem_foto = sum(1 for p in enc if not any(norm(p["Name"])==norm(n) or p["Name"].lower() in n.lower() or n.lower() in p["Name"].lower() for n in groups))
     st.markdown(f"**{len(enc)} encontrista(s)** · {sem_foto} sem foto mapeada")
-
     search_f = st.text_input("🔍 Filtrar por nome", key="fto_search")
     enc_filtrado = [p for p in enc if search_f.lower() in p["Name"].lower()] if search_f else enc
-
     for p in enc_filtrado:
         pn = p["Name"]; links = []
-        # Coleta todos os links deste encontrista (pode estar em várias linhas da planilha)
         for name, lks in groups.items():
-            if norm(name)==norm(pn) or pn.lower() in name.lower() or name.lower() in pn.lower():
-                links.extend(lks)
-        count = len(links)
-        finalizado = sec_status.get(p["Id"], {}).get("bolsa_ok", False)
-        label_extra = " — FINALIZADO ✅" if finalizado else ""
-        icon = "✅" if finalizado else ("📷" if count > 0 else "🚨")
-
+            if norm(name)==norm(pn) or pn.lower() in name.lower() or name.lower() in pn.lower(): links.extend(lks)
+        count = len(links); finalizado = sec_status.get(p["Id"], {}).get("bolsa_ok", False)
+        label_extra = " — FINALIZADO ✅" if finalizado else ""; icon = "✅" if finalizado else ("📷" if count > 0 else "🚨")
         with st.expander(f"{icon} {pn} — {count} foto(s){label_extra}"):
-            if finalizado:
-                st.success("Bolsa finalizada pela Secretária.")
+            if finalizado: st.success("Bolsa finalizada pela Secretária.")
             if links:
                 st.caption("Clique nos links abaixo para abrir cada foto no navegador e fazer o download:")
-                # Converte cada link para URL de visualização e exibe
                 for i, lk in enumerate(links, 1):
                     view_url = make_gdrive_view_url(lk)
-                    if view_url:
-                        st.markdown(f"📷 [Foto {i} — abrir no navegador]({view_url})")
-                    else:
-                        st.markdown(f"📷 Foto {i}: `{lk}`")
+                    if view_url: st.markdown(f"📷 [Foto {i} — abrir no navegador]({view_url})")
+                    else:        st.markdown(f"📷 Foto {i}: `{lk}`")
             else:
-                if loaded:
-                    st.warning("Sem fotos recebidas para este encontrista.")
-                else:
-                    st.caption("Clique em Atualizar para carregar a planilha.")
+                if loaded: st.warning("Sem fotos recebidas para este encontrista.")
+                else:      st.caption("Clique em Atualizar para carregar a planilha.")
 
 def page_secretary(eid, ev):
     st.markdown(f"## 🗂️ Secretária — {ev['Name']}")
     st.caption("Controle de montagem das bolsas: cartas e fotos por encontrista.")
-
-    parts = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
-    enc = [p for p in parts if is_encounterist(p.get("Category"))]
-    rm = {r["Id"]: r["Name"] for r in rooms}
-    pr = {a["ParticipantId"]: rm.get(a["RoomId"], "-") for a in assigns}
-
-    team_key = f"sec_team_{eid}"
-    dist_key = f"sec_dist_{eid}"
-    status_key = f"sec_status_{eid}"
-
+    parts  = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
+    enc    = [p for p in parts if is_encounterist(p.get("Category"))]
+    rm     = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"], "-") for a in assigns}
+    team_key = f"sec_team_{eid}"; dist_key = f"sec_dist_{eid}"; status_key = f"sec_status_{eid}"
     if team_key not in st.session_state:
         db_team, db_dist, db_status = load_secretary_state(eid)
-        st.session_state[team_key] = db_team
-        st.session_state[dist_key] = db_dist
-        st.session_state[status_key] = db_status
-
-    team: list = st.session_state[team_key]
-    dist: dict = st.session_state[dist_key]
-    sec_status: dict = st.session_state[status_key]
-
-    def persist():
-        save_secretary_state(eid, team, dist, sec_status)
-
-    letters = st.session_state.get(f"letters_data_{eid}", {})
-    photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
-
+        st.session_state[team_key] = db_team; st.session_state[dist_key] = db_dist; st.session_state[status_key] = db_status
+    team: list = st.session_state[team_key]; dist: dict = st.session_state[dist_key]; sec_status: dict = st.session_state[status_key]
+    def persist(): save_secretary_state(eid, team, dist, sec_status)
+    letters = st.session_state.get(f"letters_data_{eid}", {}); photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
     def count_letters(name):
         cnt = 0
         for key, lts in letters.items():
             if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): cnt += len(lts)
         return cnt
-
     def count_photos(name):
         for key, links in photo_groups.items():
             if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): return len(links)
         return 0
-
     tab1, tab2, tab3 = st.tabs(["👥 Equipe", "🔀 Distribuição", "📋 Acompanhamento"])
-
     with tab1:
         st.markdown("#### Adicionar membro da equipe")
-        servos = [p for p in parts if is_server(p.get("Category"))]
-        servo_names = [p["Name"] for p in servos]
+        servos = [p for p in parts if is_server(p.get("Category"))]; servo_names = [p["Name"] for p in servos]
         novo_membro = st.selectbox("Selecionar servo", [""] + servo_names, key="sec_sel_servo")
         custom_membro = st.text_input("Ou digitar nome manualmente", key="sec_custom")
         if st.button("➕ Adicionar à equipe"):
             nome = custom_membro.strip() or novo_membro
-            if nome and nome not in team:
-                team.append(nome); st.session_state[team_key] = team
-                persist(); st.rerun()
-            elif nome in team:
-                st.warning(f"'{nome}' já está na equipe.")
-        st.divider()
-        st.markdown(f"#### Equipe atual ({len(team)} pessoas)")
-        if not team:
-            st.info("Nenhum membro adicionado ainda.")
+            if nome and nome not in team: team.append(nome); st.session_state[team_key] = team; persist(); st.rerun()
+            elif nome in team: st.warning(f"'{nome}' já está na equipe.")
+        st.divider(); st.markdown(f"#### Equipe atual ({len(team)} pessoas)")
+        if not team: st.info("Nenhum membro adicionado ainda.")
         else:
             for i, m in enumerate(team):
                 col_m1, col_m2 = st.columns([5,1])
@@ -1427,75 +1224,48 @@ def page_secretary(eid, ev):
                         team.pop(i); st.session_state[team_key] = team
                         if m in dist: del dist[m]; st.session_state[dist_key] = dist
                         persist(); st.rerun()
-
     with tab2:
-        if not team:
-            st.warning("Adicione membros na aba Equipe primeiro.")
-        elif not enc:
-            st.warning("Nenhum encontrista cadastrado.")
+        if not team: st.warning("Adicione membros na aba Equipe primeiro.")
+        elif not enc: st.warning("Nenhum encontrista cadastrado.")
         else:
             st.markdown(f"**{len(enc)} encontristas** para distribuir entre **{len(team)} pessoas**")
             st.caption("A distribuição é feita por quarto, igualmente entre os membros.")
             if st.button("🔀 Distribuir encontristas", type="primary"):
                 by_room = {}
-                for p in enc:
-                    quarto = pr.get(p["Id"], "Sem quarto")
-                    by_room.setdefault(quarto, []).append(p)
+                for p in enc: quarto = pr.get(p["Id"], "Sem quarto"); by_room.setdefault(quarto, []).append(p)
                 ordered = []
-                for quarto_nome in sorted(by_room.keys()):
-                    ordered.extend(by_room[quarto_nome])
+                for quarto_nome in sorted(by_room.keys()): ordered.extend(by_room[quarto_nome])
                 new_dist = {m: [] for m in team}
-                for idx, p in enumerate(ordered):
-                    membro = team[idx % len(team)]
-                    new_dist[membro].append(p["Id"])
-                st.session_state[dist_key] = new_dist; dist = new_dist
-                persist(); st.success("✅ Distribuição feita!"); st.rerun()
-
+                for idx, p in enumerate(ordered): new_dist[team[idx % len(team)]].append(p["Id"])
+                st.session_state[dist_key] = new_dist; dist = new_dist; persist(); st.success("✅ Distribuição feita!"); st.rerun()
             if dist:
-                todos_dist = {pid for pids in dist.values() for pid in pids}
-                sem_dist = [p for p in enc if p["Id"] not in todos_dist]
+                todos_dist = {pid for pids in dist.values() for pid in pids}; sem_dist = [p for p in enc if p["Id"] not in todos_dist]
                 if sem_dist:
                     st.warning(f"⚠️ **{len(sem_dist)} encontrista(s) sem distribuição** — clique em Distribuir para incluir:")
                     for p in sem_dist: st.caption(f"  • {p['Name']}")
-                st.divider()
-                st.markdown("#### Resultado da distribuição")
+                st.divider(); st.markdown("#### Resultado da distribuição")
                 for membro, pids in dist.items():
-                    people = [p for p in enc if p["Id"] in pids]
-                    st.markdown(f"**👤 {membro}** — {len(people)} encontrista(s)")
+                    people = [p for p in enc if p["Id"] in pids]; st.markdown(f"**👤 {membro}** — {len(people)} encontrista(s)")
                     rows_d = [{"Nome": p["Name"], "Quarto": pr.get(p["Id"],"-"), "Indicado por": p.get("InvitedBy") or "-"} for p in people]
                     if rows_d: st.dataframe(pd.DataFrame(rows_d), hide_index=True, use_container_width=True)
                     st.divider()
-
     with tab3:
-        if not dist:
-            st.info("Faça a distribuição primeiro na aba Distribuição.")
+        if not dist: st.info("Faça a distribuição primeiro na aba Distribuição.")
         else:
             membro_sel = st.selectbox("👤 Ver acompanhamento de:", list(dist.keys()), key="sec_member_sel")
-            pids_sel = dist.get(membro_sel, [])
-            people_sel = [p for p in enc if p["Id"] in pids_sel]
-
-            total = len(people_sel)
-            finalizados = sum(1 for p in people_sel if sec_status.get(p["Id"],{}).get("bolsa_ok",False))
-            st.markdown(f"**{finalizados}/{total}** bolsas finalizadas")
-            st.progress(finalizados/total if total else 0)
-            st.divider()
-
+            pids_sel = dist.get(membro_sel, []); people_sel = [p for p in enc if p["Id"] in pids_sel]
+            total = len(people_sel); finalizados = sum(1 for p in people_sel if sec_status.get(p["Id"],{}).get("bolsa_ok",False))
+            st.markdown(f"**{finalizados}/{total}** bolsas finalizadas"); st.progress(finalizados/total if total else 0); st.divider()
             for p in people_sel:
-                pid = p["Id"]
-                ps = sec_status.get(pid, {})
-                bolsa_ok = ps.get("bolsa_ok", False)
-                cartas_ok = ps.get("cartas_ok", False)
-                fotos_ok = ps.get("fotos_ok", False)
-                n_cartas = count_letters(p["Name"])
-                n_fotos = count_photos(p["Name"])
-                quarto = pr.get(pid, "-")
-                indicado = p.get("InvitedBy") or "-"
+                pid = p["Id"]; ps = sec_status.get(pid, {})
+                bolsa_ok = ps.get("bolsa_ok", False); cartas_ok = ps.get("cartas_ok", False); fotos_ok = ps.get("fotos_ok", False)
+                n_cartas = count_letters(p["Name"]); n_fotos = count_photos(p["Name"])
+                quarto = pr.get(pid, "-"); indicado = p.get("InvitedBy") or "-"
                 icon = "✅" if bolsa_ok else ("🟡" if (cartas_ok or fotos_ok) else "⬜")
                 with st.container(border=True):
                     r1, r2 = st.columns([4,2])
                     with r1:
-                        st.markdown(f"{icon} **{p['Name']}**")
-                        st.caption(f"Quarto: {quarto} · Indicado por: {indicado}")
+                        st.markdown(f"{icon} **{p['Name']}**"); st.caption(f"Quarto: {quarto} · Indicado por: {indicado}")
                         sub1, sub2 = st.columns(2)
                         with sub1:
                             c_icon = "✅" if cartas_ok else ("📭" if n_cartas == 0 else "📬")
@@ -1530,14 +1300,14 @@ def page_settings(eid, ev):
         name = st.text_input("Nome", value=ev.get("Name",""))
         c1,c2 = st.columns(2)
         with c1: sd = st.date_input("Início", value=date.fromisoformat(ev["StartDate"]) if ev.get("StartDate") else date.today())
-        with c2: ed = st.date_input("Fim", value=date.fromisoformat(ev["EndDate"]) if ev.get("EndDate") else date.today())
+        with c2: ed = st.date_input("Fim",    value=date.fromisoformat(ev["EndDate"])   if ev.get("EndDate")   else date.today())
         loc = st.text_input("Local", value=ev.get("Location") or "")
         sts = ["Config","Aberto","Em andamento","Encerrado"]; cs = ev.get("Status") or "Config"
         status = st.selectbox("Status", sts, index=sts.index(cs) if cs in sts else 0)
         st.divider(); st.markdown("**Planilhas**")
-        ru = st.text_input("Inscrições", value=ev.get("RegistrationSheetUrl") or "")
-        lu = st.text_input("Cartas", value=ev.get("LettersSheetUrl") or "")
-        phu = st.text_input("Fotos", value=ev.get("PhotosSheetUrl") or "")
+        ru  = st.text_input("Inscrições", value=ev.get("RegistrationSheetUrl") or "")
+        lu  = st.text_input("Cartas",     value=ev.get("LettersSheetUrl")      or "")
+        phu = st.text_input("Fotos",      value=ev.get("PhotosSheetUrl")       or "")
         if st.form_submit_button("Salvar", type="primary"):
             get_sb().table("Events").update({"Name":name,"StartDate":sd.isoformat(),"EndDate":ed.isoformat(),"Location":loc or None,"Status":status,"RegistrationSheetUrl":ru or None,"LettersSheetUrl":lu or None,"PhotosSheetUrl":phu or None,"UpdatedAtUtc":utcnow()}).eq("Id",eid).execute()
             st.success("Salvo!"); st.rerun()
