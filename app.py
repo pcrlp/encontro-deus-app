@@ -223,7 +223,6 @@ def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None,
     ORDER = ["azul", "amarelo", "verde", "lilas", "vermelho", ""]
 
     buf = io.BytesIO()
-    # A4: 595pt, margens 30 cada → área útil = 535pt
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=30, rightMargin=30, topMargin=36, bottomMargin=36)
     styles    = getSampleStyleSheet()
     cell_style = ParagraphStyle("cell", fontName="Helvetica",      fontSize=8, leading=10)
@@ -269,8 +268,7 @@ def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None,
             ])
             row_colors.append(colors.HexColor(SC.get(sk(sector), "#F9FAFB")))
 
-        # 30+30 margem → 535pt disponíveis
-        col_widths = [22, 145, 75, 65, 118, 110]   # soma = 535
+        col_widths = [22, 145, 75, 65, 118, 110]
         t = Table(data, colWidths=col_widths, repeatRows=1)
         table_style = [
             ("BACKGROUND",    (0,0), (-1,0), colors.HexColor("#E2E8F0")),
@@ -308,10 +306,6 @@ def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None,
 
 
 def generate_rooms_pdf(event_id):
-    """
-    PDF de quartos — usa Paragraph em TODAS as células para que nomes longos
-    quebrem dentro da coluna em vez de invadir colunas vizinhas.
-    """
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
@@ -326,7 +320,6 @@ def generate_rooms_pdf(event_id):
         abr.setdefault(a["RoomId"], []).append(a)
 
     buf = io.BytesIO()
-    # A4: 595pt, margens 36 cada lado → área útil = 523pt
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=36, rightMargin=36,
                             topMargin=36,  bottomMargin=36)
@@ -335,7 +328,6 @@ def generate_rooms_pdf(event_id):
     cell_style = ParagraphStyle("rcell", fontName="Helvetica",      fontSize=8, leading=10)
     hdr_style  = ParagraphStyle("rhdr",  fontName="Helvetica-Bold", fontSize=8, leading=10)
 
-    # Colunas: Nome(210) | Idade(32) | Camisa(40) | GC(145) | Setor(96) = 523pt
     COL_W = [210, 32, 40, 145, 96]
 
     elems = []
@@ -427,6 +419,60 @@ def extract_gdrive_id(url):
     if "/" not in url and re.match(r"^[A-Za-z0-9\-_]+$", url): return url
     return None
 
+# ─── Shared loaders for letters and photos (usados em múltiplas páginas) ──────
+def _do_load_letters(eid, url):
+    """Carrega e armazena cartas no session_state. Retorna (sucesso, mensagem)."""
+    try:
+        text = fetch_sheet_csv(url)
+        df = pd.read_csv(io.StringIO(text), dtype=str)
+        df.columns = [c.strip() for c in df.columns]
+        ct = find_header(df.columns, ["Para quem","Destinatário","Para","Nome do Encontrista","Encontrista","Nome do encontrista:","Nome do encontrista"])
+        cf = find_header(df.columns, ["De quem","Remetente","De","Nome de quem escreve","Seu nome","Seu nome:"])
+        cm = find_header(df.columns, ["Mensagem","Carta","Texto","Conteúdo","Escreva algo especial para ele(a) aqui:","Escreva algo especial para ele(a) aqui","Mensagem para ele(a)"])
+        if not ct: return False, f"Coluna 'Para quem' não encontrada. Colunas: {', '.join(df.columns)}"
+        if not cm: return False, f"Coluna 'Mensagem' não encontrada. Colunas: {', '.join(df.columns)}"
+        letters = {}
+        for _, row in df.iterrows():
+            to = safe_str(row.get(ct))
+            sender = safe_str(row.get(cf)) if cf else "—"
+            if sender is None: sender = "—"
+            msg = safe_str(row.get(cm)) or ""
+            if to and msg: letters.setdefault(to, []).append({"sender": sender, "message": msg})
+        total = sum(len(v) for v in letters.values())
+        st.session_state[f"letters_dl_{eid}"] = {"ts": datetime.now().strftime("%d/%m/%Y às %H:%M"), "total": total}
+        st.session_state[f"letters_data_{eid}"] = letters
+        return True, f"✅ {total} carta(s) carregadas"
+    except Exception as e:
+        return False, str(e)
+
+def _do_load_photos(eid, url):
+    """Carrega e armazena fotos no session_state. Retorna (sucesso, mensagem)."""
+    try:
+        text = fetch_sheet_csv(url)
+        df = pd.read_csv(io.StringIO(text), dtype=str)
+        df.columns = [c.strip() for c in df.columns]
+        cn = find_header(df.columns, ["Nome do Encontrista", "Nome do encontrista:", "Nome do encontrista", "Encontrista", "Nome"])
+        cp = find_header(df.columns, ["Foto", "Fotos", "URL da Foto", "URL das Fotos", "URL", "Link"])
+        if not cn: return False, f"Coluna 'Nome do Encontrista' não encontrada. Colunas: {', '.join(df.columns)}"
+        if not cp: return False, f"Coluna 'Foto' não encontrada. Colunas: {', '.join(df.columns)}"
+        groups = {}
+        for _, row in df.iterrows():
+            name = safe_str(row.get(cn)); photo = safe_str(row.get(cp))
+            if name and photo:
+                groups.setdefault(name, [])
+                for lk in photo.split(","):
+                    lk = lk.strip()
+                    if lk: groups[name].append(lk)
+        total = sum(len(v) for v in groups.values())
+        prev = st.session_state.get(f"photos_dl_{eid}", {}).get("total", total)
+        st.session_state[f"photos_prev_count_{eid}"] = prev
+        st.session_state[f"photos_dl_{eid}"] = {"ts": datetime.now().strftime("%d/%m/%Y às %H:%M"), "total": total}
+        st.session_state[f"photo_groups_{eid}"] = groups
+        st.session_state[f"photos_loaded_{eid}"] = True
+        return True, f"✅ {len(groups)} encontrista(s) com fotos — {total} foto(s) mapeadas"
+    except Exception as e:
+        return False, str(e)
+
 # ─── Default Schedule ─────────────────────────────────────────────────────────
 DEF_SAB = [
     ("07:00","07:30","Chegada dos Encontristas","",5),("07:30","08:30","CAFÉ","",3),
@@ -467,8 +513,13 @@ def show_login():
     st.markdown("## 🔐 Gestão Encontro com Deus"); st.caption("Informe a senha para acessar.")
     pwd = st.text_input("Senha", type="password", key="lp")
     if st.button("Entrar", type="primary", use_container_width=True):
-        if pwd == st.secrets.get("APP_PASSWORD", "encontro2025"): st.session_state.authenticated = True; st.rerun()
-        else: st.error("Senha incorreta.")
+        if pwd == st.secrets.get("APP_PASSWORD", "encontro2025"):
+            st.session_state.authenticated = True
+            # FIX 1: Persiste login via query param para não pedir novamente
+            st.query_params["auth"] = "1"
+            st.rerun()
+        else:
+            st.error("Senha incorreta.")
 
 def page_events():
     st.markdown("## ⛪ Eventos"); events = load_events()
@@ -645,7 +696,6 @@ def page_rooms(eid, ev):
     parts  = load_participants(eid); rooms = load_rooms(eid); assigns = load_assignments(eid)
     pm     = {p["Id"]: p for p in parts}; sb2 = get_sb()
 
-    # ── Alerta sem quarto ────────────────────────────────────────────────────
     aids_top  = set(a["ParticipantId"] for a in assigns)
     unall_top = [p for p in parts if p["Id"] not in aids_top and is_encounterist(p.get("Category"))]
     if unall_top:
@@ -687,7 +737,6 @@ def page_rooms(eid, ev):
             h1,h2,h3,h4 = st.columns([3,2,1,1])
             with h1: st.markdown(f"**{room['Name']}** ({GENDER_MAP.get(room.get('Gender',0),'-')})"); st.caption(f"{len(occs)}/{room['Capacity']} · Líder: {leader['Name'] if leader else '-'}")
             with h2:
-                # Servos E Equipe podem ser líderes
                 lideres = [p for p in parts if is_server(p.get("Category")) or norm(p.get("Category","")).startswith("equipe")]
                 opts = ["(nenhum)"] + [p["Name"] for p in lideres]
                 ci   = opts.index(leader["Name"]) if leader and leader["Name"] in opts else 0
@@ -862,38 +911,49 @@ def generate_letters_docx(participant_name, letters_list):
 
 def page_letters(eid, ev):
     st.markdown(f"## 💌 Cartas — {ev['Name']}")
-    url = ev.get("LettersSheetUrl") or ""; parts = load_participants(eid); enc = [p for p in parts if is_encounterist(p.get("Category"))]
-    if not url: st.warning("⚠️ URL da planilha de cartas não configurada. Acesse **Configurações** para adicionar."); return
-    dl_key = f"letters_dl_{eid}"; prev_counts_key = f"letters_prev_counts_{eid}"
+    url = ev.get("LettersSheetUrl") or ""
+    parts = load_participants(eid)
+    enc = [p for p in parts if is_encounterist(p.get("Category"))]
+
+    if not url:
+        st.warning("⚠️ URL da planilha de cartas não configurada. Acesse **Configurações** para adicionar.")
+        return
+
+    # FIX 3: Auto-carrega cartas ao entrar na página (apenas 1x por sessão por evento)
+    auto_key = f"letters_auto_loaded_{eid}"
+    if url and not st.session_state.get(auto_key):
+        st.session_state[auto_key] = True
+        with st.spinner("Carregando cartas automaticamente..."):
+            ok, msg = _do_load_letters(eid, url)
+            if not ok:
+                st.error(f"Erro ao carregar cartas: {msg}")
+                st.caption("💡 Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link pode ver'.")
+
+    dl_key = f"letters_dl_{eid}"
+    prev_counts_key = f"letters_prev_counts_{eid}"
     dl_info = st.session_state.get(dl_key)
-    if dl_info: st.caption(f"📥 Último carregamento: **{dl_info['ts']}** · {dl_info['total']} carta(s)")
-    if st.button("🔍 Carregar cartas", type="primary"):
+    if dl_info:
+        st.caption(f"📥 Último carregamento: **{dl_info['ts']}** · {dl_info['total']} carta(s)")
+
+    if st.button("🔍 Recarregar cartas", type="primary"):
         with st.spinner("Lendo..."):
-            try:
-                text = fetch_sheet_csv(url); df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
-                ct = find_header(df.columns, ["Para quem","Destinatário","Para","Nome do Encontrista","Encontrista","Nome do encontrista:","Nome do encontrista"])
-                cf = find_header(df.columns, ["De quem","Remetente","De","Nome de quem escreve","Seu nome","Seu nome:"])
-                cm = find_header(df.columns, ["Mensagem","Carta","Texto","Conteúdo","Escreva algo especial para ele(a) aqui:","Escreva algo especial para ele(a) aqui","Mensagem para ele(a)"])
-                if not ct: st.error(f"Coluna 'Para quem' não encontrada. Colunas: {', '.join(df.columns)}"); return
-                if not cm: st.error(f"Coluna 'Mensagem' não encontrada. Colunas: {', '.join(df.columns)}"); return
-                letters = {}
-                for _, row in df.iterrows():
-                    to = safe_str(row.get(ct)); sender = safe_str(row.get(cf)) if cf else "—"
-                    if sender is None: sender = "—"
-                    msg = safe_str(row.get(cm)) or ""
-                    if to and msg: letters.setdefault(to, []).append({"sender": sender, "message": msg})
-                total = sum(len(v) for v in letters.values())
-                old_letters = st.session_state.get(f"letters_data_{eid}", {}); old_counts = {}
-                for p2 in enc:
-                    c2 = sum(len(lts) for k2, lts in old_letters.items() if norm(k2)==norm(p2["Name"]) or p2["Name"].lower() in k2.lower() or k2.lower() in p2["Name"].lower())
-                    old_counts[p2["Id"]] = c2
-                st.session_state[prev_counts_key] = old_counts
-                st.session_state[dl_key] = {"ts": datetime.now().strftime("%d/%m/%Y às %H:%M"), "total": total}
-                st.session_state[f"letters_data_{eid}"] = letters; st.success(f"✅ {total} carta(s) carregadas")
-            except Exception as e:
-                st.error(f"Erro ao carregar planilha: {e}")
-                st.caption("💡 Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link pode ver'."); return
-    letters = st.session_state.get(f"letters_data_{eid}", {}); prev_counts = st.session_state.get(prev_counts_key, {}); sec_status = st.session_state.get(f"sec_status_{eid}", {})
+            # Salva contagens anteriores para diff
+            letters_old = st.session_state.get(f"letters_data_{eid}", {})
+            old_counts = {}
+            for p2 in enc:
+                c2 = sum(len(lts) for k2, lts in letters_old.items() if norm(k2)==norm(p2["Name"]) or p2["Name"].lower() in k2.lower() or k2.lower() in p2["Name"].lower())
+                old_counts[p2["Id"]] = c2
+            st.session_state[prev_counts_key] = old_counts
+            ok, msg = _do_load_letters(eid, url)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(f"Erro ao carregar planilha: {msg}")
+                st.caption("💡 Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link pode ver'.")
+
+    letters = st.session_state.get(f"letters_data_{eid}", {})
+    prev_counts = st.session_state.get(prev_counts_key, {})
+    sec_status = st.session_state.get(f"sec_status_{eid}", {})
     st.divider()
     sem_carta = sum(1 for p in enc if sum(len(lts) for key, lts in letters.items() if norm(key)==norm(p["Name"]) or p["Name"].lower() in key.lower() or key.lower() in p["Name"].lower()) == 0)
     st.markdown(f"**{len(enc)} encontrista(s)** · {sem_carta} sem carta recebida")
@@ -921,16 +981,16 @@ def page_letters(eid, ev):
                 except Exception as e: st.error(f"Erro: {e}")
             else: st.caption("Sem cartas" if letters else "—")
 
-# ─── Labels — Pimaco 6182 ────────────────────────────────────────────────────
+# ─── Labels — Pimaco 6180 ────────────────────────────────────────────────────
 def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
     """
-    PDF Pimaco 6182 — especificações físicas verificadas:
-      Etiqueta : 101,6 mm × 33,9 mm (largura × altura)
-      Layout   : 2 colunas × 7 linhas = 14 etiquetas/folha
+    PDF Pimaco 6180 — especificações físicas conforme embalagem:
+      Etiqueta : 66,7 mm × 25,4 mm (largura × altura)
+      Layout   : 3 colunas × 10 linhas = 30 etiquetas/folha
       Papel    : Carta / US Letter  (215,9 × 279,4 mm)
-      Margem esquerda  : 6,35 mm
-      Margem superior  : 21,05 mm  →  (279,4 - 7 × 33,9) / 2 = 21,05 mm ✓
-      Gap entre colunas: 0 mm      →  2 × 101,6 + 2 × 6,35 = 215,9 mm ✓
+      Margem esquerda  : 7,9 mm  →  (215,9 - 3 × 66,7) / 2 = 7,9 mm ✓
+      Margem superior  : 12,7 mm →  (279,4 - 10 × 25,4) / 2 = 12,7 mm ✓
+      Gap entre colunas: 0 mm
       Gap entre linhas : 0 mm
     """
     from reportlab.lib.pagesizes import letter
@@ -944,14 +1004,14 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
 
     PAGE_W, PAGE_H = letter          # 612 × 792 pt
 
-    LBL_W    = 101.6 * MM            # 287,87 pt
-    LBL_H    =  33.9 * MM            #  96,09 pt
-    COLS     = 2
-    ROWS     = 7
-    PER_PAGE = COLS * ROWS           # 14
+    LBL_W    = 66.7 * MM             # ~189,1 pt
+    LBL_H    = 25.4 * MM             # ~72,0 pt
+    COLS     = 3
+    ROWS     = 10
+    PER_PAGE = COLS * ROWS           # 30
 
-    MARGIN_LEFT = 6.35  * MM         # 18,0 pt
-    MARGIN_TOP  = PAGE_H - (21.05 * MM)   # y do topo da 1ª linha
+    MARGIN_LEFT = 7.9  * MM          # ~22,4 pt
+    MARGIN_TOP  = PAGE_H - (12.7 * MM)  # y do topo da 1ª linha (~756 pt)
 
     def draw_name_wrapped(c, text, x, y, max_w, font_bold, font_size_big, font_size_small):
         font = font_bold
@@ -995,34 +1055,34 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
             c.setStrokeColorRGB(0.80, 0.80, 0.80); c.setLineWidth(0.3)
             c.rect(x, y, LBL_W, LBL_H)
 
-            PAD      = 5 * MM
-            txt_x    = x + PAD
+            PAD       = 3 * MM                  # padding interno menor p/ caber
+            txt_x     = x + PAD
             txt_max_w = LBL_W - 2 * PAD
 
             if label_type == "nome":
                 name     = p.get("Name", "")
-                center_y = y + LBL_H / 2 - 5
-                draw_name_wrapped(c, name, txt_x, center_y, txt_max_w, "Helvetica-Bold", 11, 9)
+                center_y = y + LBL_H / 2 - 4
+                draw_name_wrapped(c, name, txt_x, center_y, txt_max_w, "Helvetica-Bold", 9, 7)
 
             elif label_type == "blusa":
                 name   = p.get("Name", "")
                 quarto = pr.get(p["Id"], "-")
                 shirt  = SHIRT_MAP.get(p.get("ShirtSize", 0), "-")
-                name_y = y + LBL_H - 20
-                draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 10, 8)
-                c.setFont("Helvetica", 7.5)
-                c.drawString(txt_x, y + 18, f"Quarto: {quarto}")
-                c.drawString(txt_x, y + 7,  f"Blusa: {shirt}")
+                name_y = y + LBL_H - 15
+                draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 9, 7)
+                c.setFont("Helvetica", 7)
+                c.drawString(txt_x, y + 12, f"Quarto: {quarto}")
+                c.drawString(txt_x, y + 4,  f"Blusa: {shirt}")
 
             else:
                 name   = p.get("Name", "")
                 cat    = p.get("Category") or "-"
                 quarto = pr.get(p["Id"], "-")
-                name_y = y + LBL_H - 20
-                draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 10, 8)
-                c.setFont("Helvetica", 7.5)
-                c.drawString(txt_x, y + 18, cat[:40])
-                c.drawString(txt_x, y + 7,  f"Quarto: {quarto}")
+                name_y = y + LBL_H - 15
+                draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 9, 7)
+                c.setFont("Helvetica", 7)
+                c.drawString(txt_x, y + 12, cat[:40])
+                c.drawString(txt_x, y + 4,  f"Quarto: {quarto}")
 
         if pg < pages - 1: c.showPage()
 
@@ -1031,7 +1091,8 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
 
 def page_labels(eid, ev):
     st.markdown(f"## 🏷️ Etiquetas — {ev['Name']}")
-    st.caption("Modelo: **Pimaco 6182** · Inkjet + Laser · Carta · 101,6 × 33,9 mm · **14 etiquetas/folha** (2 col × 7 lin)")
+    # FIX 5: Atualizado para Pimaco 6180 — 30 etiquetas/folha
+    st.caption("Modelo: **Pimaco 6180** · Inkjet + Laser · Carta · 66,7 × 25,4 mm · **30 etiquetas/folha** (3 col × 10 lin)")
     parts  = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
     rm     = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"],"-") for a in assigns}
 
@@ -1092,7 +1153,7 @@ def page_labels(eid, ev):
     parts_flagged  = [p for p in filtered_lbl if p["Id"] in flagged]
     base_list      = parts_flagged if parts_flagged else filtered_lbl
     parts_to_print = [p for p in base_list for _ in range(int(repeat_qty))]
-    n_etiquetas    = len(parts_to_print); n_folhas = (n_etiquetas + 13) // 14
+    n_etiquetas    = len(parts_to_print); n_folhas = (n_etiquetas + 29) // 30  # 30 por folha
     sel_label      = f"✔ {len(parts_flagged)} selecionado(s)" if parts_flagged else f"Todos ({len(filtered_lbl)})"
 
     with summary_placeholder:
@@ -1105,12 +1166,12 @@ def page_labels(eid, ev):
             if st.button("🖨️ Gerar etiqueta camisa (nome + quarto + blusa)", type="primary", use_container_width=True, key="btn_camisa"):
                 with st.spinner("Gerando PDF..."):
                     pdf = generate_labels_pimaco(parts_to_print, "blusa", assigns, rooms)
-                    st.download_button("⬇️ Baixar PDF Camisa", pdf, "etiquetas_camisa_6182.pdf", "application/pdf", use_container_width=True)
+                    st.download_button("⬇️ Baixar PDF Camisa", pdf, "etiquetas_camisa_6180.pdf", "application/pdf", use_container_width=True)
         with b2:
             if st.button("🖨️ Gerar etiqueta só nome", use_container_width=True, key="btn_nome"):
                 with st.spinner("Gerando PDF..."):
                     pdf = generate_labels_pimaco(parts_to_print, "nome", assigns, rooms)
-                    st.download_button("⬇️ Baixar PDF Nome", pdf, "etiquetas_nome_6182.pdf", "application/pdf", use_container_width=True)
+                    st.download_button("⬇️ Baixar PDF Nome", pdf, "etiquetas_nome_6180.pdf", "application/pdf", use_container_width=True)
 
 def make_gdrive_view_url(raw_url):
     if not raw_url: return None
@@ -1126,38 +1187,44 @@ def make_gdrive_view_url(raw_url):
 
 def page_photos(eid, ev):
     st.markdown(f"## 📸 Fotos — {ev['Name']}")
-    url = ev.get("PhotosSheetUrl") or ""; parts = load_participants(eid); enc = [p for p in parts if is_encounterist(p.get("Category"))]
-    if not url: st.warning("⚠️ URL da planilha de fotos não configurada. Acesse **Configurações** para adicionar."); return
-    dl_key = f"photos_dl_{eid}"; prev_key = f"photos_prev_count_{eid}"
+    url = ev.get("PhotosSheetUrl") or ""
+    parts = load_participants(eid)
+    enc = [p for p in parts if is_encounterist(p.get("Category"))]
+
+    if not url:
+        st.warning("⚠️ URL da planilha de fotos não configurada. Acesse **Configurações** para adicionar.")
+        return
+
+    # FIX 2: Auto-carrega fotos ao entrar na página (apenas 1x por sessão por evento)
+    auto_key = f"photos_auto_loaded_{eid}"
+    if url and not st.session_state.get(auto_key):
+        st.session_state[auto_key] = True
+        with st.spinner("Carregando fotos automaticamente..."):
+            ok, msg = _do_load_photos(eid, url)
+            if not ok:
+                st.error(f"Erro ao carregar fotos: {msg}")
+                st.caption("💡 Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link pode ver'.")
+
+    dl_key = f"photos_dl_{eid}"
+    prev_key = f"photos_prev_count_{eid}"
     dl_info = st.session_state.get(dl_key)
     if dl_info:
         prev_count = st.session_state.get(prev_key, dl_info["total"]); new_count = dl_info["total"]
         delta_str = f" · **+{new_count - prev_count} nova(s)**" if new_count > prev_count else ""
         st.info(f"📥 Último carregamento: **{dl_info['ts']}** · {new_count} foto(s) mapeadas{delta_str}")
+
     if st.button("🔄 Atualizar", type="primary"):
         with st.spinner("Lendo planilha..."):
-            try:
-                text = fetch_sheet_csv(url); df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
-                cn = find_header(df.columns, ["Nome do Encontrista", "Nome do encontrista:", "Nome do encontrista", "Encontrista", "Nome"])
-                cp = find_header(df.columns, ["Foto", "Fotos", "URL da Foto", "URL das Fotos", "URL", "Link"])
-                if not cn: st.error(f"Coluna 'Nome do Encontrista' não encontrada. Colunas: {', '.join(df.columns)}"); return
-                if not cp: st.error(f"Coluna 'Foto' não encontrada. Colunas: {', '.join(df.columns)}"); return
-                groups = {}
-                for _, row in df.iterrows():
-                    name = safe_str(row.get(cn)); photo = safe_str(row.get(cp))
-                    if name and photo:
-                        groups.setdefault(name, [])
-                        for lk in photo.split(","):
-                            lk = lk.strip()
-                            if lk: groups[name].append(lk)
-                total = sum(len(v) for v in groups.values()); prev = st.session_state.get(dl_key, {}).get("total", total)
-                st.session_state[prev_key] = prev; st.session_state[dl_key] = {"ts": datetime.now().strftime("%d/%m/%Y às %H:%M"), "total": total}
-                st.session_state[f"photo_groups_{eid}"] = groups; st.session_state[f"photos_loaded_{eid}"] = True
-                st.success(f"✅ {len(groups)} encontrista(s) com fotos — {total} foto(s) mapeadas.")
-            except Exception as e:
-                st.error(f"Erro ao carregar planilha: {e}")
+            ok, msg = _do_load_photos(eid, url)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(f"Erro ao carregar planilha: {msg}")
                 st.caption("💡 Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link pode ver'.")
-    groups = st.session_state.get(f"photo_groups_{eid}", {}); loaded = st.session_state.get(f"photos_loaded_{eid}", False); sec_status = st.session_state.get(f"sec_status_{eid}", {})
+
+    groups = st.session_state.get(f"photo_groups_{eid}", {})
+    loaded = st.session_state.get(f"photos_loaded_{eid}", False)
+    sec_status = st.session_state.get(f"sec_status_{eid}", {})
     st.divider()
     sem_foto = sum(1 for p in enc if not any(norm(p["Name"])==norm(n) or p["Name"].lower() in n.lower() or n.lower() in p["Name"].lower() for n in groups))
     st.markdown(f"**{len(enc)} encontrista(s)** · {sem_foto} sem foto mapeada")
@@ -1250,8 +1317,39 @@ def page_secretary(eid, ev):
                     if rows_d: st.dataframe(pd.DataFrame(rows_d), hide_index=True, use_container_width=True)
                     st.divider()
     with tab3:
-        if not dist: st.info("Faça a distribuição primeiro na aba Distribuição.")
+        if not dist:
+            st.info("Faça a distribuição primeiro na aba Distribuição.")
         else:
+            # FIX 4: Botão Atualizar no Acompanhamento para recarregar cartas e fotos
+            url_letters = ev.get("LettersSheetUrl") or ""
+            url_photos  = ev.get("PhotosSheetUrl") or ""
+            col_refresh, col_info = st.columns([2, 5])
+            with col_refresh:
+                if st.button("🔄 Atualizar cartas e fotos", type="primary", use_container_width=True):
+                    erros = []
+                    if url_letters:
+                        with st.spinner("Recarregando cartas..."):
+                            ok, msg = _do_load_letters(eid, url_letters)
+                            if not ok: erros.append(f"Cartas: {msg}")
+                    if url_photos:
+                        with st.spinner("Recarregando fotos..."):
+                            ok, msg = _do_load_photos(eid, url_photos)
+                            if not ok: erros.append(f"Fotos: {msg}")
+                    if erros:
+                        for e in erros: st.error(e)
+                    else:
+                        # Recarrega dados do session_state após update
+                        letters   = st.session_state.get(f"letters_data_{eid}", {})
+                        photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
+                        st.success("✅ Cartas e fotos atualizadas!")
+                        st.rerun()
+            with col_info:
+                dl_l = st.session_state.get(f"letters_dl_{eid}", {})
+                dl_p = st.session_state.get(f"photos_dl_{eid}", {})
+                if dl_l.get("ts"): st.caption(f"📬 Cartas: {dl_l['ts']} · {dl_l.get('total',0)} carta(s)")
+                if dl_p.get("ts"): st.caption(f"📷 Fotos: {dl_p['ts']} · {dl_p.get('total',0)} foto(s)")
+
+            st.divider()
             membro_sel = st.selectbox("👤 Ver acompanhamento de:", list(dist.keys()), key="sec_member_sel")
             pids_sel = dist.get(membro_sel, []); people_sel = [p for p in enc if p["Id"] in pids_sel]
             total = len(people_sel); finalizados = sum(1 for p in people_sel if sec_status.get(p["Id"],{}).get("bolsa_ok",False))
@@ -1315,11 +1413,27 @@ def page_settings(eid, ev):
 # ═══════════════════════════════════════════════════════════════════════════════
 def main():
     st.set_page_config(page_title="Gestão Encontro com Deus", page_icon="⛪", layout="wide", initial_sidebar_state="expanded")
-    if "authenticated" not in st.session_state: st.session_state.authenticated = False
-    if not st.session_state.authenticated: show_login(); return
+
+    # Inicializa authenticated
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    # FIX 1: Restaura sessão via query param — não pede login se já fez antes
+    if not st.session_state.authenticated and st.query_params.get("auth") == "1":
+        st.session_state.authenticated = True
+
+    if not st.session_state.authenticated:
+        show_login()
+        return
+
     with st.sidebar:
         st.markdown("### ⛪ Encontro com Deus"); st.divider()
-        if st.button("🚪 Sair", use_container_width=True): st.session_state.authenticated = False; st.session_state.pop("current_event", None); st.rerun()
+        if st.button("🚪 Sair", use_container_width=True):
+            st.session_state.authenticated = False
+            st.query_params.clear()  # Remove persistência de login ao sair
+            st.session_state.pop("current_event", None)
+            st.rerun()
+
     if "page" not in st.session_state: st.session_state.page = "events"
     page = st.session_state.page; eid = st.session_state.get("current_event")
     if page == "event_new": page_event_new(); return
