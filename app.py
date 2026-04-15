@@ -616,12 +616,19 @@ def page_rooms(eid, ev):
     pm = {p["Id"]: p for p in parts}; sb2 = get_sb()
 
     # ── Contador sem quarto em cima ──────────────────────────────────────────
+    # CORREÇÃO 2: inclui gênero não informado (0) no breakdown para evitar "0 Masculino · 0 Feminino"
     aids_top = set(a["ParticipantId"] for a in assigns)
     unall_top = [p for p in parts if p["Id"] not in aids_top and is_encounterist(p.get("Category"))]
     if unall_top:
-        unall_m = sum(1 for p in unall_top if p.get("Gender")==1)
-        unall_f = sum(1 for p in unall_top if p.get("Gender")==2)
-        st.warning(f"⚠️ **{len(unall_top)} encontrista(s) sem quarto atribuído** — {unall_m} Masculino · {unall_f} Feminino")
+        unall_m = sum(1 for p in unall_top if p.get("Gender") == 1)
+        unall_f = sum(1 for p in unall_top if p.get("Gender") == 2)
+        unall_ni = len(unall_top) - unall_m - unall_f
+        gender_parts = []
+        if unall_m: gender_parts.append(f"{unall_m} Masculino")
+        if unall_f: gender_parts.append(f"{unall_f} Feminino")
+        if unall_ni: gender_parts.append(f"{unall_ni} Não informado")
+        gender_str = " · ".join(gender_parts) if gender_parts else "gênero não informado"
+        st.warning(f"⚠️ **{len(unall_top)} encontrista(s) sem quarto atribuído** — {gender_str}")
 
     with st.expander("➕ Novo Quarto", expanded=False):
         with st.form("nr"):
@@ -650,12 +657,13 @@ def page_rooms(eid, ev):
             h1,h2,h3,h4 = st.columns([3,2,1,1])
             with h1: st.markdown(f"**{room['Name']}** ({GENDER_MAP.get(room.get('Gender',0),'-')})"); st.caption(f"{len(occs)}/{room['Capacity']} · Líder: {leader['Name'] if leader else '-'}")
             with h2:
-                servos = [p for p in parts if is_server(p.get("Category"))]
-                opts = ["(nenhum)"] + [p["Name"] for p in servos]
+                # CORREÇÃO 1: inclui servos E equipe na lista de líderes
+                lideres = [p for p in parts if is_server(p.get("Category")) or norm(p.get("Category","")).startswith("equipe")]
+                opts = ["(nenhum)"] + [p["Name"] for p in lideres]
                 ci = opts.index(leader["Name"]) if leader and leader["Name"] in opts else 0
                 sel = st.selectbox("Líder", opts, index=ci, key=f"l_{rid}")
                 if st.button("Salvar", key=f"sl_{rid}"):
-                    nlid = next((p["Id"] for p in servos if p["Name"]==sel), None) if sel!="(nenhum)" else None
+                    nlid = next((p["Id"] for p in lideres if p["Name"]==sel), None) if sel!="(nenhum)" else None
                     sb2.table("Rooms").update({"LeaderId":nlid,"UpdatedAtUtc":utcnow()}).eq("Id",rid).execute(); st.rerun()
             with h3:
                 exp_key = f"exp_{rid}"
