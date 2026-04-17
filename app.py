@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Modo Claro (White Theme) + Gráficos Ajustados
+Versão Final - Modo Claro (White Theme) + Matemática de Gráficos Corrigida
 """
 import streamlit as st
 import pandas as pd
@@ -616,16 +616,26 @@ def page_dashboard(eid, ev):
     letters = st.session_state.get(f"letters_data_{eid}", {})
     photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
 
+    def count_letters(name):
+        cnt = 0
+        for key, lts in letters.items():
+            if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): cnt += len(lts)
+        return cnt
+
+    def count_photos(name):
+        for key, links in photo_groups.items():
+            if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): return len(links)
+        return 0
+
     total_enc = len(enc)
     if total_enc > 0:
-        # A lógica exata solicitada: Conta pessoas distintas na planilha do Google
-        recebeu_carta = len(letters.keys())
-        nao_recebeu_carta = max(0, total_enc - recebeu_carta)
+        # A lógica correta: iterar pelos encontristas do banco e ver se eles tem arquivo recebido
+        recebeu_carta = sum(1 for p in enc if count_letters(p["Name"]) > 0)
+        nao_recebeu_carta = total_enc - recebeu_carta
         
-        recebeu_foto = len(photo_groups.keys())
-        nao_recebeu_foto = max(0, total_enc - recebeu_foto)
+        recebeu_foto = sum(1 for p in enc if count_photos(p["Name"]) > 0)
+        nao_recebeu_foto = total_enc - recebeu_foto
 
-        # Colunas com [1, 4, 4, 1] servem para "espremer" e centralizar os gráficos
         _, col_chart1, col_chart2, _ = st.columns([1, 4, 4, 1])
         
         try:
@@ -635,12 +645,12 @@ def page_dashboard(eid, ev):
                     names=["Com Cartas", "Faltam"], 
                     values=[recebeu_carta, nao_recebeu_carta],
                     title=f"Cartas (Base: {total_enc})",
-                    color_discrete_sequence=["#10b981", "#e2e8f0"], # Verde e Cinza Claro
-                    hole=0.6 # Furo maior no centro para ficar clean
+                    color_discrete_sequence=["#10b981", "#e2e8f0"], 
+                    hole=0.6 
                 )
                 fig_cartas.update_traces(textposition='inside', textinfo='percent+value', hoverinfo='label+percent')
                 fig_cartas.update_layout(
-                    height=280, # Altura reduzida (menor)
+                    height=280, 
                     showlegend=True, 
                     legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
                     margin=dict(t=30, b=0, l=0, r=0), 
@@ -655,7 +665,7 @@ def page_dashboard(eid, ev):
                     names=["Com Fotos", "Faltam"], 
                     values=[recebeu_foto, nao_recebeu_foto],
                     title=f"Fotos (Base: {total_enc})",
-                    color_discrete_sequence=["#3b82f6", "#e2e8f0"], # Azul e Cinza Claro
+                    color_discrete_sequence=["#3b82f6", "#e2e8f0"], 
                     hole=0.6
                 )
                 fig_fotos.update_traces(textposition='inside', textinfo='percent+value', hoverinfo='label+percent')
@@ -674,11 +684,10 @@ def page_dashboard(eid, ev):
             import matplotlib.pyplot as plt
             with col_chart1:
                 st.markdown(f"**Cartas (Base: {total_enc})**")
-                fig1, ax1 = plt.subplots(figsize=(3, 3)) # Reduzido
+                fig1, ax1 = plt.subplots(figsize=(3, 3))
                 fig1.patch.set_facecolor('#ffffff')
                 ax1.pie([recebeu_carta, nao_recebeu_carta], labels=["Com Cartas", "Faltam"], autopct='%1.1f%%', 
                         startangle=90, colors=["#10b981", "#e2e8f0"], textprops={'color':"black"})
-                # Transforma em anel (Donut) no Matplotlib
                 centre_circle = plt.Circle((0,0),0.60,fc='white')
                 fig1.gca().add_artist(centre_circle)
                 ax1.axis('equal')
