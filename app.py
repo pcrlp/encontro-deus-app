@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Layout SaaS + Etiquetas no Topo Corrigidas
+Versão Final - Acompanhamento de Check-in Adicionado
 """
 import streamlit as st
 import pandas as pd
@@ -705,6 +705,7 @@ def event_sidebar(eid):
             "photos":"📸 Fotos",
             "secretary":"🗂️ Secretaria",
             "print_management":"🖨️ Gestão de Impressão",
+            "checkin_status":"✅ Acomp. Check-in",
             "settings":"⚙️ Configurações"
         }
         for k, label in menu_items.items():
@@ -1254,6 +1255,91 @@ def page_secretary(eid, ev):
             for idx, p in enumerate(ordered): new_dist[team[idx % len(team)]].append(p["Id"])
             dist = new_dist; persist(); st.success("✅ Distribuição feita com sucesso!"); st.rerun()
 
+# ─── MÓDULO DE ACOMPANHAMENTO DO CHECK-IN ─────────────────────────────────────
+def page_checkin_status(eid, ev):
+    st.markdown(f"## ✅ Acompanhamento de Check-in — {ev['Name']}")
+    
+    parts = load_participants(eid)
+    enc = [p for p in parts if is_encounterist(p.get("Category", ""))]
+
+    homens = [p for p in enc if p.get("Gender") == 1]
+    mulheres = [p for p in enc if p.get("Gender") == 2]
+
+    h_chegaram = sum(1 for h in homens if h.get("CheckInStatus"))
+    h_faltam = len(homens) - h_chegaram
+
+    m_chegaram = sum(1 for m in mulheres if m.get("CheckInStatus"))
+    m_faltam = len(mulheres) - m_chegaram
+
+    total_enc = len(enc)
+    total_chegaram = h_chegaram + m_chegaram
+    total_faltam = h_faltam + m_faltam
+
+    st.markdown(f"""
+    <style>
+    .stats-container-chk {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 0.5rem 0 1rem 0; }}
+    .stats-box-chk {{ background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 0.8rem; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }}
+    .stats-title-chk {{ font-size: 0.85rem; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.5rem; border-bottom: 1px solid #F1F5F9; padding-bottom: 0.3rem; }}
+    .stats-row-chk {{ display: flex; justify-content: space-between; margin-top: 0.3rem; }}
+    .stat-item-chk {{ text-align: center; flex: 1; }}
+    .stat-number-chk {{ font-size: 1.3rem; font-weight: 700; }}
+    .stat-number-chk.arrived {{ color: #16A34A; }}
+    .stat-number-chk.missing {{ color: #EF4444; }}
+    .stat-label-chk {{ font-size: 0.65rem; color: #64748B; text-transform: uppercase; font-weight: 600; }}
+    </style>
+    <div class="stats-container-chk">
+        <div class="stats-box-chk">
+            <div class="stats-title-chk">👥 Total ({total_enc})</div>
+            <div class="stats-row-chk">
+                <div class="stat-item-chk"><div class="stat-number-chk arrived">{total_chegaram}</div><div class="stat-label-chk">Chegaram</div></div>
+                <div class="stat-item-chk"><div class="stat-number-chk missing">{total_faltam}</div><div class="stat-label-chk">Faltam</div></div>
+            </div>
+        </div>
+        <div class="stats-box-chk">
+            <div class="stats-title-chk">👨 Homens ({len(homens)})</div>
+            <div class="stats-row-chk">
+                <div class="stat-item-chk"><div class="stat-number-chk arrived">{h_chegaram}</div><div class="stat-label-chk">Chegaram</div></div>
+                <div class="stat-item-chk"><div class="stat-number-chk missing">{h_faltam}</div><div class="stat-label-chk">Faltam</div></div>
+            </div>
+        </div>
+        <div class="stats-box-chk">
+            <div class="stats-title-chk">👩 Mulheres ({len(mulheres)})</div>
+            <div class="stats-row-chk">
+                <div class="stat-item-chk"><div class="stat-number-chk arrived">{m_chegaram}</div><div class="stat-label-chk">Chegaram</div></div>
+                <div class="stat-item-chk"><div class="stat-number-chk missing">{m_faltam}</div><div class="stat-label-chk">Faltam</div></div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("### 🚨 Encontristas que ainda NÃO chegaram")
+
+    search_faltantes = st.text_input("🔍 Buscar por nome...", key="search_faltantes")
+
+    faltantes = [p for p in enc if not p.get("CheckInStatus")]
+
+    if search_faltantes:
+        faltantes = [p for p in faltantes if search_faltantes.lower() in p.get("Name", "").lower()]
+
+    if faltantes:
+        data = []
+        for p in faltantes:
+            data.append({
+                "Nome": p.get("Name", ""),
+                "Telefone": p.get("Phone") or "-",
+                "Setor": p.get("ConnectionSector") or "-",
+                "GC": p.get("ConnectionGroup") or "-",
+                "Indicado por": p.get("InvitedBy") or "-"
+            })
+        st.dataframe(pd.DataFrame(data), hide_index=True, use_container_width=True)
+    else:
+        if search_faltantes:
+            st.info("Nenhum encontrista faltante encontrado com esse nome.")
+        else:
+            st.success("🎉 Todos os encontristas já chegaram!")
+
+
 # ─── MÓDULO CENTRAL DE IMPRESSÃO ───────────────────────────────
 def page_print_management(eid, ev):
     st.markdown(f"## 🖨️ Gestão de Impressão — {ev['Name']}")
@@ -1326,7 +1412,6 @@ def page_print_management(eid, ev):
                     save_secretary_state(eid, *load_secretary_state(eid)[:2], sec_status)
                     st.rerun()
 
-
 def page_settings(eid, ev):
     st.markdown(f"## ⚙️ Configurações — {ev['Name']}")
     with st.form("cfg"):
@@ -1371,6 +1456,7 @@ def main():
         "photos": page_photos,
         "secretary": page_secretary,
         "print_management": page_print_management,
+        "checkin_status": page_checkin_status,
         "settings": page_settings
     }
     
