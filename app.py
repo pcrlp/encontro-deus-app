@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Layout SaaS Restaurado + JS Multi-Links + Progresso
+Versão Final - Buscas nas abas e Correção de Leitura de Planilhas
 """
 import streamlit as st
 import pandas as pd
@@ -413,7 +413,7 @@ def generate_rooms_pdf(event_id):
     doc.build(elems)
     return buf.getvalue()
 
-# ─── Letters / Photos helpers ─────────────────────────────────────────────────
+# ─── Google Sheets Integration Corrigida ─────────────────────────────────────
 def sheets_url_to_csv(url):
     if "export?format=csv" in url.lower(): return url
     m = re.search(r"spreadsheets/d/([A-Za-z0-9\-_]+)", url, re.I)
@@ -438,25 +438,22 @@ def fetch_sheet_csv(url):
         gviz = f"https://docs.google.com/spreadsheets/d/{sid}/gviz/tq?tqx=out:csv&gid={gid}"
         resp2 = requests.get(gviz, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
         if resp2.status_code == 200: return resp2.text
-    raise Exception("Não foi possível carregar a planilha. Verifique se está compartilhada.")
-
-def extract_gdrive_id(url):
-    if not url: return None
-    m = re.search(r"drive\.google\.com/.*/d/([A-Za-z0-9\-_]+)", url, re.I)
-    if m: return m.group(1)
-    m = re.search(r"[?&]id=([A-Za-z0-9\-_]+)", url, re.I)
-    if m: return m.group(1)
-    if "/" not in url and re.match(r"^[A-Za-z0-9\-_]+$", url): return url
-    return None
+    raise Exception("Não foi possível carregar a planilha. Verifique se o link está público.")
 
 def _do_load_letters(eid, url):
+    if not url: return False, "URL vazia"
     try:
         text = fetch_sheet_csv(url)
         df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
-        ct = find_header(df.columns, ["Para quem","Destinatário","Para","Nome do Encontrista","Encontrista"])
-        cf = find_header(df.columns, ["De quem","Remetente","De","Seu nome"])
-        cm = find_header(df.columns, ["Mensagem","Carta","Texto","Conteúdo","Escreva algo especial para ele(a) aqui:"])
-        if not ct or not cm: return False, "Colunas não encontradas."
+        
+        # Busca robusta para não perder os nomes exatos do formulário
+        ct = find_header(df.columns, ["Para quem","Destinatário","Para","Nome do Encontrista","Encontrista","Nome do encontrista:","Nome do encontrista"])
+        cf = find_header(df.columns, ["De quem","Remetente","De","Nome de quem escreve","Seu nome","Seu nome:"])
+        cm = find_header(df.columns, ["Mensagem","Carta","Texto","Conteúdo","Escreva algo especial para ele(a) aqui:","Escreva algo especial para ele(a) aqui","Mensagem para ele(a)"])
+        
+        if not ct or not cm: 
+            return False, f"Colunas necessárias não encontradas nas cartas. Colunas atuais: {', '.join(df.columns)}"
+            
         letters = {}
         for _, row in df.iterrows():
             to = safe_str(row.get(ct))
@@ -464,6 +461,7 @@ def _do_load_letters(eid, url):
             if sender is None: sender = "—"
             msg = safe_str(row.get(cm)) or ""
             if to and msg: letters.setdefault(to, []).append({"sender": sender, "message": msg})
+            
         total = sum(len(v) for v in letters.values())
         st.session_state[f"letters_dl_{eid}"] = {"ts": datetime.now().strftime("%H:%M:%S"), "total": total}
         st.session_state[f"letters_data_{eid}"] = letters
@@ -471,12 +469,17 @@ def _do_load_letters(eid, url):
     except Exception as e: return False, str(e)
 
 def _do_load_photos(eid, url):
+    if not url: return False, "URL vazia"
     try:
         text = fetch_sheet_csv(url)
         df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
-        cn = find_header(df.columns, ["Nome do Encontrista", "Encontrista", "Nome"])
-        cp = find_header(df.columns, ["Foto", "Fotos", "URL da Foto", "URL", "Link"])
-        if not cn or not cp: return False, "Colunas não encontradas."
+        
+        cn = find_header(df.columns, ["Nome do Encontrista", "Nome do encontrista:", "Nome do encontrista", "Encontrista", "Nome"])
+        cp = find_header(df.columns, ["Foto", "Fotos", "URL da Foto", "URL das Fotos", "URL", "Link"])
+        
+        if not cn or not cp: 
+            return False, f"Colunas necessárias não encontradas nas fotos. Colunas atuais: {', '.join(df.columns)}"
+            
         groups = {}
         for _, row in df.iterrows():
             name = safe_str(row.get(cn)); photo = safe_str(row.get(cp))
@@ -485,6 +488,7 @@ def _do_load_photos(eid, url):
                 for lk in photo.split(","):
                     lk = lk.strip()
                     if lk: groups[name].append(lk)
+                    
         total = sum(len(v) for v in groups.values())
         st.session_state[f"photos_dl_{eid}"] = {"ts": datetime.now().strftime("%H:%M:%S"), "total": total}
         st.session_state[f"photo_groups_{eid}"] = groups
@@ -634,10 +638,15 @@ def page_dashboard(eid, ev):
         st.markdown("### 📈 Progresso de Recebimentos")
     with col_btn:
         if st.button("🔄 Atualizar Dados Agora", type="primary", use_container_width=True):
+            has_error = False
             with st.spinner("Buscando no Google Drive..."):
-                if ev.get("LettersSheetUrl"): _do_load_letters(eid, ev["LettersSheetUrl"])
-                if ev.get("PhotosSheetUrl"): _do_load_photos(eid, ev["PhotosSheetUrl"])
-                st.rerun()
+                if ev.get("LettersSheetUrl"): 
+                    ok, msg = _do_load_letters(eid, ev["LettersSheetUrl"])
+                    if not ok: st.error(f"Erro nas Cartas: {msg}"); has_error = True
+                if ev.get("PhotosSheetUrl"): 
+                    ok, msg = _do_load_photos(eid, ev["PhotosSheetUrl"])
+                    if not ok: st.error(f"Erro nas Fotos: {msg}"); has_error = True
+            if not has_error: st.rerun()
 
     letters = st.session_state.get(f"letters_data_{eid}", {})
     photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
@@ -673,7 +682,7 @@ def page_dashboard(eid, ev):
                 fig_fotos.update_layout(height=280, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5), margin=dict(t=30, b=0, l=0, r=0))
                 st.plotly_chart(fig_fotos, use_container_width=True)
         except ImportError:
-            st.warning("Para ver os gráficos de pizza, certifique-se de que a biblioteca 'plotly' está instalada no servidor.")
+            st.warning("Gráficos de pizza indisponíveis. Instale a biblioteca 'plotly'.")
 
         st.divider()
         col_tab1, col_tab2 = st.columns(2)
@@ -873,12 +882,28 @@ def page_letters(eid, ev):
     st.markdown(f"## 💌 Cartas — {ev['Name']}")
     parts = load_participants(eid)
     enc = [p for p in parts if is_encounterist(p.get("Category"))]
+
+    col_s, col_b = st.columns([3, 1])
+    with col_s:
+        search_l = st.text_input("🔍 Buscar por nome", key="search_letters")
+    with col_b:
+        if st.button("🔄 Atualizar Cartas", type="primary", use_container_width=True):
+            if ev.get("LettersSheetUrl"):
+                ok, msg = _do_load_letters(eid, ev["LettersSheetUrl"])
+                if ok: st.success("Cartas atualizadas!")
+                else: st.error(f"Erro: {msg}")
+            else: st.warning("URL não configurada na aba Configurações.")
+
+    if search_l:
+        enc = [p for p in enc if search_l.lower() in p["Name"].lower()]
+
     letters_dict = st.session_state.get(f"letters_data_{eid}", {})
     
-    if not letters_dict:
-        st.info("As cartas ainda não foram atualizadas. Volte ao Dashboard e clique em 'Atualizar Dados Agora'.")
+    if not letters_dict and not ev.get("LettersSheetUrl"):
+        st.info("As cartas não estão configuradas. Adicione o link em 'Configurações'.")
         return
 
+    st.divider()
     for p in enc:
         user_letters = []
         for key, lts in letters_dict.items():
@@ -909,12 +934,28 @@ def page_photos(eid, ev):
     st.info("⚠️ Para abrir todas as fotos de uma vez, permita os **Pop-ups** no seu navegador.")
     parts = load_participants(eid)
     enc = [p for p in parts if is_encounterist(p.get("Category"))]
+
+    col_s, col_b = st.columns([3, 1])
+    with col_s:
+        search_f = st.text_input("🔍 Buscar por nome", key="search_photos")
+    with col_b:
+        if st.button("🔄 Atualizar Fotos", type="primary", use_container_width=True):
+            if ev.get("PhotosSheetUrl"):
+                ok, msg = _do_load_photos(eid, ev["PhotosSheetUrl"])
+                if ok: st.success("Fotos atualizadas!")
+                else: st.error(f"Erro: {msg}")
+            else: st.warning("URL não configurada na aba Configurações.")
+
+    if search_f:
+        enc = [p for p in enc if search_f.lower() in p["Name"].lower()]
+
     photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
 
-    if not photo_groups:
-        st.info("As fotos ainda não foram atualizadas. Volte ao Dashboard e clique em 'Atualizar Dados Agora'.")
+    if not photo_groups and not ev.get("PhotosSheetUrl"):
+        st.info("As fotos não estão configuradas. Adicione o link em 'Configurações'.")
         return
 
+    st.divider()
     for p in enc:
         user_photos = []
         for key, lks in photo_groups.items():
