@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Estável e Otimizada
+Versão Final - Estável, Otimizada e com Gráficos
 """
 import streamlit as st
 import pandas as pd
@@ -14,6 +14,51 @@ def get_sb() -> Client:
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+# ─── Custom CSS (SaaS, Dark Mode, Neon Accents) ──────────────────────────────
+def inject_custom_css():
+    st.markdown("""
+    <style>
+    /* Global Dark Theme Settings */
+    .stApp { background-color: #0d1117; color: #e6edf3; }
+    
+    /* Neumorphic/SaaS Containers */
+    div[data-testid="stContainer"] {
+        border: 1px solid #30363d !important;
+        border-radius: 12px !important;
+        background-color: #161b22 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+        padding: 1rem;
+    }
+    div[data-testid="stContainer"]:hover {
+        border-color: #00ffcc !important;
+        box-shadow: 0 0 15px rgba(0, 255, 204, 0.15);
+    }
+
+    /* Primary Neon Buttons */
+    .stButton>button[kind="primary"] {
+        background: linear-gradient(90deg, #00ffcc, #00bfff) !important;
+        color: #000000 !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        box-shadow: 0 0 10px rgba(0, 255, 204, 0.4) !important;
+        transition: transform 0.1s;
+    }
+    .stButton>button[kind="primary"]:hover {
+        transform: scale(1.02);
+        box-shadow: 0 0 15px rgba(0, 255, 204, 0.6) !important;
+    }
+    .stDownloadButton>button {
+        background: linear-gradient(90deg, #39ff14, #00cc00) !important;
+        color: #000000 !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 8px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ─── Enums ────────────────────────────────────────────────
 GENDER_MAP = {0: "-", 1: "Masculino", 2: "Feminino"}
@@ -82,13 +127,6 @@ def parse_date_br(val):
         except: continue
     return None
 
-def time_to_minutes(t):
-    if not t: return None
-    try:
-        parts = str(t).strip().split(":")
-        return int(parts[0]) * 60 + int(parts[1])
-    except: return None
-
 # ─── Data loaders ─────────────────────────────────────────────────────────────
 def load_events(): return get_sb().table("Events").select("*").order("CreatedAtUtc", desc=True).execute().data or []
 def load_event(eid):
@@ -96,7 +134,6 @@ def load_event(eid):
 def load_participants(eid): return get_sb().table("Participants").select("*").eq("EventId", eid).order("Name").execute().data or []
 def load_rooms(eid): return get_sb().table("Rooms").select("*").eq("EventId", eid).order("Name").execute().data or []
 def load_assignments(eid): return get_sb().table("RoomAssignments").select("*").eq("EventId", eid).execute().data or []
-def load_schedule(eid): return get_sb().table("ScheduleItems").select("*").eq("EventId", eid).order("Day").order("Order").execute().data or []
 
 def save_secretary_state(eid, team, dist, sec_status):
     import json
@@ -563,6 +600,82 @@ def page_dashboard(eid, ev):
     c5,c6,c7,c8 = st.columns(4)
     c5.metric("Equipe", len(equipe)); c6.metric("Total Geral", len(parts)); c7.metric("Quartos", len(load_rooms(eid))); c8.metric("","")
 
+    # ─── GRÁFICOS DE PIZZA (Acompanhamento de Recebimentos) ───
+    st.divider()
+    st.markdown("### 📈 Acompanhamento de Recebimentos")
+    
+    letters = st.session_state.get(f"letters_data_{eid}", {})
+    photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
+
+    def count_letters(name):
+        cnt = 0
+        for key, lts in letters.items():
+            if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): cnt += len(lts)
+        return cnt
+
+    def count_photos(name):
+        for key, links in photo_groups.items():
+            if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): return len(links)
+        return 0
+
+    total_enc = len(enc)
+    if total_enc > 0:
+        recebeu_carta = sum(1 for p in enc if count_letters(p["Name"]) > 0)
+        nao_recebeu_carta = total_enc - recebeu_carta
+        
+        recebeu_foto = sum(1 for p in enc if count_photos(p["Name"]) > 0)
+        nao_recebeu_foto = total_enc - recebeu_foto
+
+        col_chart1, col_chart2 = st.columns(2)
+        
+        try:
+            import plotly.express as px
+            with col_chart1:
+                fig_cartas = px.pie(
+                    names=["Recebeu Carta", "Não Recebeu"], 
+                    values=[recebeu_carta, nao_recebeu_carta],
+                    title=f"Cartas ({total_enc} Encontristas)",
+                    color_discrete_sequence=["#00ffcc", "#ff4444"],
+                    hole=0.4
+                )
+                fig_cartas.update_traces(textposition='inside', textinfo='percent+label+value')
+                fig_cartas.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_cartas, use_container_width=True)
+
+            with col_chart2:
+                fig_fotos = px.pie(
+                    names=["Recebeu Foto", "Não Recebeu"], 
+                    values=[recebeu_foto, nao_recebeu_foto],
+                    title=f"Fotos ({total_enc} Encontristas)",
+                    color_discrete_sequence=["#00bfff", "#ff4444"],
+                    hole=0.4
+                )
+                fig_fotos.update_traces(textposition='inside', textinfo='percent+label+value')
+                fig_fotos.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_fotos, use_container_width=True)
+                
+        except ImportError:
+            import matplotlib.pyplot as plt
+            with col_chart1:
+                st.markdown(f"**Cartas ({total_enc} Encontristas)**")
+                fig1, ax1 = plt.subplots(figsize=(4, 4))
+                fig1.patch.set_facecolor('#161b22')
+                ax1.pie([recebeu_carta, nao_recebeu_carta], labels=["Recebeu Carta", "Não Recebeu"], autopct='%1.1f%%', 
+                        startangle=90, colors=["#00ffcc", "#ff4444"], textprops={'color':"w"})
+                ax1.axis('equal')
+                st.pyplot(fig1)
+                
+            with col_chart2:
+                st.markdown(f"**Fotos ({total_enc} Encontristas)**")
+                fig2, ax2 = plt.subplots(figsize=(4, 4))
+                fig2.patch.set_facecolor('#161b22')
+                ax2.pie([recebeu_foto, nao_recebeu_foto], labels=["Recebeu Foto", "Não Recebeu"], autopct='%1.1f%%', 
+                        startangle=90, colors=["#00bfff", "#ff4444"], textprops={'color':"w"})
+                ax2.axis('equal')
+                st.pyplot(fig2)
+    else:
+        st.info("Nenhum encontrista cadastrado para gerar os gráficos.")
+
 def page_participants(eid, ev):
     st.markdown(f"## 👥 Participantes — {ev['Name']}")
     with st.expander("📥 Importar CSV / ➕ Adicionar", expanded=False):
@@ -649,7 +762,6 @@ def page_rooms(eid, ev):
     parts  = load_participants(eid); rooms = load_rooms(eid); assigns = load_assignments(eid)
     pm     = {p["Id"]: p for p in parts}; sb2 = get_sb()
 
-    # Opções superiores
     b1, b2, b3 = st.columns([1, 1, 2])
     with b1:
         if st.button("🔀 Auto-Distribuir", type="primary", use_container_width=True):
@@ -680,15 +792,11 @@ def page_rooms(eid, ev):
         am.setdefault(a["RoomId"], []).append(a)
         aids.add(a["ParticipantId"])
 
-    # Renderização em formato de CARDS expansíveis
     for room in rooms:
         rid = room["Id"]; occs = am.get(rid, [])
         gender_str = GENDER_MAP.get(room.get('Gender', 0), '-')
         
-        # O Card expansível do Quarto
         with st.expander(f"🏠 {room['Name']} ({gender_str}) — {len(occs)}/{room['Capacity']} vagas", expanded=False):
-            
-            # Cabeçalho interno do quarto: Edição e Exclusão
             col_ed1, col_ed2 = st.columns([3, 1])
             with col_ed1:
                 with st.popover("⚙️ Editar Dados do Quarto"):
@@ -704,7 +812,6 @@ def page_rooms(eid, ev):
 
             st.divider()
 
-            # Lista de participantes dentro do quarto
             if occs:
                 for a in occs:
                     p = pm.get(a["ParticipantId"])
@@ -726,16 +833,13 @@ def page_rooms(eid, ev):
                                     swap_p = st.selectbox("Trocar lugar com:", [c["Name"] for c in swap_candidates], key=f"swapc_{a['Id']}")
                                     if st.button("Executar Troca", type="primary", key=f"bswap_{a['Id']}"):
                                         try:
-                                            # Lógica segura de troca para evitar erro da API Supabase
                                             asgn_a_id = a["Id"]
                                             target_pid = next((c["Id"] for c in swap_candidates if c["Name"] == swap_p), None)
                                             target_asgn = next((da for da in dest_occs if da["ParticipantId"] == target_pid), None)
                                             
                                             if target_asgn:
                                                 asgn_b_id = target_asgn["Id"]
-                                                # Move a pessoa do quarto destino para o quarto atual primeiro
                                                 sb2.table("RoomAssignments").update({"RoomId": rid}).eq("Id", asgn_b_id).execute()
-                                                # Move a pessoa atual para o quarto destino
                                                 sb2.table("RoomAssignments").update({"RoomId": dest_room["Id"]}).eq("Id", asgn_a_id).execute()
                                                 st.rerun()
                                         except Exception as e:
@@ -751,7 +855,6 @@ def page_rooms(eid, ev):
                         if st.button("✕ Remover", key=f"rem_{a['Id']}"):
                             sb2.table("RoomAssignments").delete().eq("Id",a["Id"]).execute(); st.rerun()
             
-            # Adicionar nova pessoa ao quarto
             unass = [p for p in parts if p["Id"] not in aids and is_encounterist(p.get("Category")) and (p.get("Gender",0)==room.get("Gender",0) or room.get("Gender",0)==0)]
             if unass and len(occs) < room["Capacity"]:
                 sp = st.selectbox("Adicionar pessoa sem quarto:", [""]+[p["Name"] for p in unass], key=f"addp_{rid}")
@@ -760,7 +863,7 @@ def page_rooms(eid, ev):
                     sb2.table("RoomAssignments").insert({"Id":str(uuid.uuid4()),"EventId":eid,"RoomId":rid,"ParticipantId":pid,"CreatedAtUtc":utcnow()}).execute(); st.rerun()
 
 
-# ─── MÓDULO CENTRAL DE IMPRESSÃO (NOVO FLUXO) ───────────────────────────────
+# ─── MÓDULO CENTRAL DE IMPRESSÃO ───────────────────────────────
 def page_print_management(eid, ev):
     st.markdown(f"## 🖨️ Gestão de Impressão — {ev['Name']}")
     st.info("⚠️ **Atenção (Letícia/Equipe de Impressão):** Ao imprimir, vá imediatamente na planilha/formulário do Google e **remova o nome do encontrista** para travar o recebimento de novas cartas ou fotos.")
@@ -768,7 +871,6 @@ def page_print_management(eid, ev):
     parts = load_participants(eid)
     _, _, sec_status = load_secretary_state(eid)
     
-    # Filtra apenas quem tem status requested ou printing
     print_queue = [p for p in parts if sec_status.get(p["Id"], {}).get("print_status") in ["requested", "printing"]]
     
     if not print_queue:
@@ -776,7 +878,6 @@ def page_print_management(eid, ev):
         return
 
     def mark_as_printing(pid):
-        # Altera o status para que a Karina veja "Imprimindo" na aba Secretaria
         sec_status[pid]["print_status"] = "printing"
         save_secretary_state(eid, *load_secretary_state(eid)[:2], sec_status)
 
@@ -799,7 +900,6 @@ def page_print_management(eid, ev):
             
             with c2:
                 if user_letters:
-                    # Download exato de 1 clique, gera o arquivo imediatamente.
                     docx_bytes = generate_letters_docx(p["Name"], user_letters)
                     st.download_button(
                         label=f"⬇️ Baixar Cartas ({len(user_letters)})", 
@@ -839,7 +939,6 @@ def page_print_management(eid, ev):
                     save_secretary_state(eid, *load_secretary_state(eid)[:2], sec_status)
                     st.rerun()
 
-# GERADOR DE WORD (1 CARTA POR PÁGINA EXATA)
 def generate_letters_docx(participant_name, letters_list):
     from docx import Document
     from docx.shared import Pt, Inches
@@ -912,7 +1011,6 @@ def page_secretary(eid, ev):
     tab1, tab2 = st.tabs(["📋 Acompanhamento das Bolsas", "⚙️ Distribuição de Equipe"])
     
     with tab1:
-        # BOTÃO GRANDE DE ATUALIZAÇÃO EM TEMPO REAL
         st.markdown("### 🔄 Atualização de Recebimentos")
         col_ref1, col_ref2 = st.columns([3, 4])
         with col_ref1:
@@ -963,9 +1061,8 @@ def page_secretary(eid, ev):
                             if st.button("↩️ Reabrir Bolsa", key=f"reopen_{pid}"):
                                 sec_status[pid]["bolsa_ok"] = False; persist(); st.rerun()
                         else:
-                            # Fluxo de Impressão (Karina -> Letícia)
                             if print_stat == "requested":
-                                st.warning("🖨️ Aguardando Letícia imprimir")
+                                st.warning("🖨️ Aguardando Impressão")
                             elif print_stat == "printing":
                                 st.info("🖨️ Sendo impresso (Notificado)")
                             elif print_stat == "done":
@@ -1009,6 +1106,7 @@ def page_settings(eid, ev):
 # ═══════════════════════════════════════════════════════════════════════════════
 def main():
     st.set_page_config(page_title="Gestão Encontro com Deus", page_icon="⛪", layout="wide", initial_sidebar_state="expanded")
+    inject_custom_css()
 
     if "authenticated" not in st.session_state: st.session_state.authenticated = False
     if not st.session_state.authenticated and st.query_params.get("auth") == "1": st.session_state.authenticated = True
