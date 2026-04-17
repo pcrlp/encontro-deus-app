@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Acompanhamento de Check-in Adicionado
+Versão Final - Etiquetas Centralizadas + Checkboxes Otimizados
 """
 import streamlit as st
 import pandas as pd
@@ -20,10 +20,8 @@ def utcnow() -> str:
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* Força textos para cor escura e fundo principal claro */
     .stApp { background-color: #f8fafc; color: #1e293b; }
     
-    /* Neumorphic/SaaS Containers - Light */
     div[data-testid="stContainer"] {
         border: 1px solid #e2e8f0 !important;
         border-radius: 10px !important;
@@ -38,7 +36,6 @@ def inject_custom_css():
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
 
-    /* Primary Buttons - Blue */
     .stButton>button[kind="primary"] {
         background-color: #2563eb !important;
         color: #ffffff !important;
@@ -50,7 +47,6 @@ def inject_custom_css():
         background-color: #1d4ed8 !important;
     }
     
-    /* Download Buttons - Green */
     .stDownloadButton>button {
         background-color: #16a34a !important;
         color: #ffffff !important;
@@ -62,7 +58,6 @@ def inject_custom_css():
         background-color: #15803d !important;
     }
     
-    /* Ajuste de cor nos expanders para modo claro */
     .streamlit-expanderHeader {
         background-color: #f1f5f9 !important;
         border-radius: 6px;
@@ -71,15 +66,12 @@ def inject_custom_css():
     </style>
     """, unsafe_allow_html=True)
 
-# ─── JS Helper para Abrir Múltiplos Links ────────────────────────────────────
 def open_multiple_links(links):
     if not links: return
     js_code = f"""
     <script>
     const links = {links};
-    links.forEach(link => {{
-        window.open(link, '_blank');
-    }});
+    links.forEach(link => {{ window.open(link, '_blank'); }});
     </script>
     """
     components.html(js_code, height=0)
@@ -257,7 +249,6 @@ def distribute_rooms(event_id):
     for a in inserts: sb.table("RoomAssignments").insert(a).execute()
     return len(inserts), len(all_rooms), None
 
-# ─── PDF Generators ───────────────────────────────────────────────────────────
 def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None, rooms=None):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -291,47 +282,27 @@ def generate_sector_pdf(participants, ev_name="Encontro com Deus", assigns=None,
         elems.append(Spacer(1, 10))
 
         sorted_parts = sorted(group_parts, key=lambda p: (ORDER.index(sk(p.get("ConnectionSector", ""))), p.get("Name", "")))
-
-        data = [[
-            Paragraph("Nº",           hdr_style),
-            Paragraph("Nome",         hdr_style),
-            Paragraph("Categoria",    hdr_style),
-            Paragraph("Quarto",       hdr_style),
-            Paragraph("Setor / GC",   hdr_style),
-            Paragraph("Convidado por",hdr_style),
+        data = [[ Paragraph("Nº", hdr_style), Paragraph("Nome", hdr_style), Paragraph("Categoria", hdr_style),
+            Paragraph("Quarto", hdr_style), Paragraph("Setor / GC", hdr_style), Paragraph("Convidado por",hdr_style),
         ]]
         row_colors = []
 
         for i, p in enumerate(sorted_parts):
-            sector   = p.get("ConnectionSector") or ""
-            gc       = p.get("ConnectionGroup") or "-"
+            sector = p.get("ConnectionSector") or ""; gc = p.get("ConnectionGroup") or "-"
             setor_gc = f"{sector or '-'} / {gc}" if sector else gc
-            quarto   = pr.get(p["Id"], "-")
-            invited  = p.get("InvitedBy") or "-"
-            cat      = p.get("Category") or "-"
+            quarto = pr.get(p["Id"], "-"); invited = p.get("InvitedBy") or "-"; cat = p.get("Category") or "-"
             data.append([
-                Paragraph(str(i+1), cell_style),
-                Paragraph(p.get("Name", ""), cell_style),
-                Paragraph(cat,      cell_style),
-                Paragraph(quarto,   cell_style),
-                Paragraph(setor_gc, cell_style),
-                Paragraph(invited,  cell_style),
+                Paragraph(str(i+1), cell_style), Paragraph(p.get("Name", ""), cell_style), Paragraph(cat, cell_style),
+                Paragraph(quarto, cell_style), Paragraph(setor_gc, cell_style), Paragraph(invited, cell_style),
             ])
             row_colors.append(colors.HexColor(SC.get(sk(sector), "#F9FAFB")))
 
-        col_widths = [22, 145, 75, 65, 118, 110]
-        t = Table(data, colWidths=col_widths, repeatRows=1)
+        t = Table(data, colWidths=[22, 145, 75, 65, 118, 110], repeatRows=1)
         table_style = [
-            ("BACKGROUND",    (0,0), (-1,0), colors.HexColor("#E2E8F0")),
-            ("GRID",          (0,0), (-1,-1), 0.4, colors.HexColor("#CBD5E1")),
-            ("VALIGN",        (0,0), (-1,-1), "TOP"),
-            ("TOPPADDING",    (0,0), (-1,-1), 3),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-            ("LEFTPADDING",   (0,0), (-1,-1), 3),
-            ("RIGHTPADDING",  (0,0), (-1,-1), 3),
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#E2E8F0")), ("GRID", (0,0), (-1,-1), 0.4, colors.HexColor("#CBD5E1")),
+            ("VALIGN", (0,0), (-1,-1), "TOP"), ("PADDING", (0,0), (-1,-1), 3),
         ]
-        for i, c in enumerate(row_colors):
-            table_style.append(("BACKGROUND", (0, i+1), (-1, i+1), c))
+        for i, c in enumerate(row_colors): table_style.append(("BACKGROUND", (0, i+1), (-1, i+1), c))
         t.setStyle(TableStyle(table_style))
         elems.append(t)
         return elems
@@ -413,7 +384,7 @@ def generate_rooms_pdf(event_id):
     doc.build(elems)
     return buf.getvalue()
 
-# ─── MÓDULO ETIQUETAS PIMACO ────────────────────────────────────────────────
+# ─── MÓDULO ETIQUETAS PIMACO (CENTRALIZADAS E CORRIGIDAS) ───────────────────
 def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas as rl_canvas
@@ -423,7 +394,7 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
     rm = {r["Id"]: r["Name"] for r in rooms}
     pr = {a["ParticipantId"]: rm.get(a["RoomId"], "-") for a in assigns}
 
-    PAGE_W, PAGE_H = letter
+    PAGE_W, PAGE_H = letter # Carta
     LBL_W = 66.7 * MM
     LBL_H = 25.4 * MM
     COLS = 3
@@ -433,76 +404,75 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
     MARGIN_LEFT = 7.9 * MM
     MARGIN_TOP = PAGE_H - (12.7 * MM)
 
-    def draw_name_wrapped(c, text, x, y, max_w, font_bold, font_size_big, font_size_small):
-        font = font_bold
-        c.setFont(font, font_size_big)
-        if c.stringWidth(text, font, font_size_big) <= max_w:
-            c.drawString(x, y, text); return font_size_big
-        words = text.split(); best_split = 1; best_diff = float("inf")
-        for i in range(1, len(words)):
-            l1 = " ".join(words[:i]); l2 = " ".join(words[i:])
-            w1 = c.stringWidth(l1, font, font_size_big); w2 = c.stringWidth(l2, font, font_size_big)
-            if w1 <= max_w and w2 <= max_w:
-                diff = abs(w1 - w2)
-                if diff < best_diff: best_diff = diff; best_split = i
-        l1 = " ".join(words[:best_split]); l2 = " ".join(words[best_split:])
-        w1 = c.stringWidth(l1, font, font_size_big); w2 = c.stringWidth(l2, font, font_size_big)
-        if w1 <= max_w and w2 <= max_w:
-            line_h = font_size_big + 1
-            c.drawString(x, y + line_h / 2, l1); c.drawString(x, y + line_h / 2 - line_h, l2)
-            return font_size_big
-        for fs in range(font_size_big - 1, 5, -1):
-            c.setFont(font, fs)
-            if c.stringWidth(text, font, fs) <= max_w:
-                c.drawString(x, y, text); return fs
-        c.setFont(font, 7)
-        while c.stringWidth(text, font, 7) > max_w and len(text) > 4: text = text[:-1]
-        c.drawString(x, y, text); return 7
-
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=letter)
     total = len(parts_sel)
     pages = _math.ceil(total / PER_PAGE) if total else 1
+
+    def split_text(text, font, size, max_width):
+        """ Divide texto longo em múltiplas linhas, respeitando o limite da etiqueta """
+        c.setFont(font, size)
+        if c.stringWidth(text, font, size) <= max_width: return [text]
+        words = text.split()
+        if not words: return []
+        lines = []
+        current_line = words[0]
+        for word in words[1:]:
+            test_line = current_line + " " + word
+            if c.stringWidth(test_line, font, size) <= max_width:
+                current_line = test_line
+            else:
+                lines.append(current_line)
+                current_line = word
+        lines.append(current_line)
+        if len(lines) > 2:
+            mid = len(words) // 2
+            return [" ".join(words[:mid]), " ".join(words[mid:])]
+        return lines
 
     for pg in range(pages):
         batch = parts_sel[pg * PER_PAGE:(pg + 1) * PER_PAGE]
         for idx, p in enumerate(batch):
             col = idx % COLS
             row = idx // COLS
+            
+            # x, y definem o CANTO INFERIOR ESQUERDO da etiqueta atual
             x = MARGIN_LEFT + col * LBL_W
             y = MARGIN_TOP - (row + 1) * LBL_H
 
-            c.setStrokeColorRGB(0.80, 0.80, 0.80); c.setLineWidth(0.3)
-            c.rect(x, y, LBL_W, LBL_H)
+            # Centro da etiqueta atual (horizontal)
+            cx = x + (LBL_W / 2)
+            # Largura segura (desconta 4mm de cada lado para não encostar na borda)
+            max_w = LBL_W - (8 * MM)
 
-            PAD = 3 * MM
-            txt_x = x + PAD
-            txt_max_w = LBL_W - 2 * PAD
+            # Para ficar bonito e padronizado, força maiúscula no nome
+            name = str(p.get("Name", "")).strip().upper()
 
             if label_type == "nome":
-                name = p.get("Name", "")
-                center_y = y + LBL_H / 2 - 4
-                draw_name_wrapped(c, name, txt_x, center_y, txt_max_w, "Helvetica-Bold", 9, 7)
+                lines = split_text(name, "Helvetica-Bold", 10, max_w)
+                total_text_h = len(lines) * 12
+                start_y = y + (LBL_H / 2) + (total_text_h / 2) - 6
+                
+                c.setFont("Helvetica-Bold", 10)
+                for i, line in enumerate(lines):
+                    c.drawCentredString(cx, start_y - (i * 12), line)
 
             elif label_type == "blusa":
-                name = p.get("Name", "")
-                quarto = pr.get(p["Id"], "-")
+                quarto = pr.get(p["Id"], "SEM QUARTO")
                 shirt = SHIRT_MAP.get(p.get("ShirtSize", 0), "-")
-                name_y = y + LBL_H - 15
-                draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 9, 7)
-                c.setFont("Helvetica", 7)
-                c.drawString(txt_x, y + 12, f"Quarto: {quarto}")
-                c.drawString(txt_x, y + 4,  f"Blusa: {shirt}")
-
-            else:
-                name = p.get("Name", "")
-                cat = p.get("Category") or "-"
-                quarto = pr.get(p["Id"], "-")
-                name_y = y + LBL_H - 15
-                draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 9, 7)
-                c.setFont("Helvetica", 7)
-                c.drawString(txt_x, y + 12, cat[:40])
-                c.drawString(txt_x, y + 4,  f"Quarto: {quarto}")
+                
+                lines = split_text(name, "Helvetica-Bold", 9, max_w)
+                c.setFont("Helvetica-Bold", 9)
+                
+                # Nome alinhado pelo meio, puxado para cima
+                name_start_y = y + LBL_H - 12
+                for i, line in enumerate(lines[:2]):
+                    c.drawCentredString(cx, name_start_y - (i * 10), line)
+                
+                # Quarto e Camisa centralizados abaixo
+                c.setFont("Helvetica", 8)
+                c.drawCentredString(cx, y + 14, f"Quarto: {quarto}")
+                c.drawCentredString(cx, y + 5, f"Camisa: {shirt}")
 
         if pg < pages - 1: c.showPage()
 
@@ -510,7 +480,7 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
     return buf.getvalue()
 
 
-# ─── Google Sheets Integration Corrigida ─────────────────────────────────────
+# ─── Google Sheets Integration ─────────────────────────────────────
 def sheets_url_to_csv(url):
     if "export?format=csv" in url.lower(): return url
     m = re.search(r"spreadsheets/d/([A-Za-z0-9\-_]+)", url, re.I)
@@ -543,7 +513,6 @@ def _do_load_letters(eid, url):
         text = fetch_sheet_csv(url)
         df = pd.read_csv(io.StringIO(text), dtype=str); df.columns = [c.strip() for c in df.columns]
         
-        # Busca robusta para não perder os nomes exatos do formulário
         ct = find_header(df.columns, ["Para quem","Destinatário","Para","Nome do Encontrista","Encontrista","Nome do encontrista:","Nome do encontrista"])
         cf = find_header(df.columns, ["De quem","Remetente","De","Nome de quem escreve","Seu nome","Seu nome:"])
         cm = find_header(df.columns, ["Mensagem","Carta","Texto","Conteúdo","Escreva algo especial para ele(a) aqui:","Escreva algo especial para ele(a) aqui","Mensagem para ele(a)"])
@@ -980,6 +949,8 @@ def page_rooms(eid, ev):
 def page_labels(eid, ev):
     st.markdown(f"## 🏷️ Etiquetas — {ev['Name']}")
     st.caption("Modelo: **Pimaco 6180** · Carta · 66,7 × 25,4 mm · **30 etiquetas/folha**")
+    st.warning("⚠️ **MUITO IMPORTANTE:** Na hora de imprimir o PDF, verifique nas configurações da impressora se a 'Escala' está em **100%** ou **Tamanho Real**. Não use 'Ajustar à Página'.")
+
     parts = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
     rm = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"],"-") for a in assigns}
 
@@ -997,21 +968,23 @@ def page_labels(eid, ev):
 
     repeat_qty = st.number_input("🔁 Cópias por pessoa", min_value=1, max_value=20, value=1, step=1, help="Ex: 3 = João João João Maria...")
     
+    flag_key = f"lbl_flags_{eid}"
+    if flag_key not in st.session_state: st.session_state[flag_key] = set()
+    
     st.divider()
 
-    # Botões de Ação Global e Controle de Estado Visível
+    # Botões de Ação Global (atualizam a chave com o hack da UI para forçar redraw visual)
     col_sel1, col_sel2, col_sel3 = st.columns([2, 2, 6])
     with col_sel1:
         if st.button("☑️ Marcar Todos", use_container_width=True):
-            for p in filtered_lbl: st.session_state[f"flag_{p['Id']}"] = True
+            st.session_state[flag_key] = set(p["Id"] for p in filtered_lbl)
             st.rerun()
     with col_sel2:
         if st.button("☐ Desmarcar Todos", use_container_width=True):
-            for p in filtered_lbl: st.session_state[f"flag_{p['Id']}"] = False
+            st.session_state[flag_key] = set()
             st.rerun()
 
-    # Leitura do estado atual antes da renderização
-    parts_flagged = [p for p in filtered_lbl if st.session_state.get(f"flag_{p['Id']}", False)]
+    parts_flagged = [p for p in filtered_lbl if p["Id"] in st.session_state[flag_key]]
     parts_to_print = [p for p in parts_flagged for _ in range(int(repeat_qty))]
     
     # ─── BOTÕES DE DOWNLOAD NO TOPO ───
@@ -1029,12 +1002,19 @@ def page_labels(eid, ev):
 
     st.markdown(f"**Lista de Participantes ({len(filtered_lbl)})**")
     
-    # Renderização da lista
+    # Renderização da lista com hack para forçar o checkbox refletir a Session State
     for p in filtered_lbl:
         pid = p["Id"]
+        is_checked = pid in st.session_state[flag_key]
+        
         c_flag, c_name = st.columns([1, 9])
         with c_flag:
-            st.checkbox("", key=f"flag_{pid}", label_visibility="collapsed")
+            # key dinâmica atrelada ao estado garante que visual mude sem dar bug no cache
+            ui_check = st.checkbox("", value=is_checked, key=f"ui_{pid}_{is_checked}", label_visibility="collapsed")
+            if ui_check != is_checked:
+                if ui_check: st.session_state[flag_key].add(pid)
+                else: st.session_state[flag_key].discard(pid)
+                st.rerun()
         with c_name:
             st.markdown(f"**{p['Name']}** - {pr.get(pid, '-')} - Camisa: {SHIRT_MAP.get(p.get('ShirtSize',0),'-')}")
 
@@ -1338,7 +1318,6 @@ def page_checkin_status(eid, ev):
             st.info("Nenhum encontrista faltante encontrado com esse nome.")
         else:
             st.success("🎉 Todos os encontristas já chegaram!")
-
 
 # ─── MÓDULO CENTRAL DE IMPRESSÃO ───────────────────────────────
 def page_print_management(eid, ev):
