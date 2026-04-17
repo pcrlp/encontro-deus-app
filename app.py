@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Layout SaaS + Etiquetas Restauradas + Multi-Links
+Versão Final - Layout SaaS + Etiquetas no Topo Corrigidas
 """
 import streamlit as st
 import pandas as pd
@@ -996,40 +996,26 @@ def page_labels(eid, ev):
 
     repeat_qty = st.number_input("🔁 Cópias por pessoa", min_value=1, max_value=20, value=1, step=1, help="Ex: 3 = João João João Maria...")
     
-    flag_key = f"lbl_flags_{eid}"
-    if flag_key not in st.session_state: st.session_state[flag_key] = set()
-    flagged = st.session_state[flag_key]
-
     st.divider()
 
-    all_ids = {p["Id"] for p in filtered_lbl}
-    all_selected = len(all_ids) > 0 and all_ids.issubset(flagged)
-    
-    hdr_chk, hdr_lbl = st.columns([1, 9])
-    with hdr_chk:
-        if st.checkbox("Marcar/Desmarcar Todos", value=all_selected, key="lbl_sel_all"):
-            flagged.update(all_ids)
-        else:
-            flagged.difference_update(all_ids)
-    with hdr_lbl: st.markdown(f"**Selecionar todos** · {len(filtered_lbl)} participante(s)")
+    # Botões de Ação Global e Controle de Estado Visível
+    col_sel1, col_sel2, col_sel3 = st.columns([2, 2, 6])
+    with col_sel1:
+        if st.button("☑️ Marcar Todos", use_container_width=True):
+            for p in filtered_lbl: st.session_state[f"flag_{p['Id']}"] = True
+            st.rerun()
+    with col_sel2:
+        if st.button("☐ Desmarcar Todos", use_container_width=True):
+            for p in filtered_lbl: st.session_state[f"flag_{p['Id']}"] = False
+            st.rerun()
 
-    for p in filtered_lbl:
-        pid = p["Id"]
-        c_flag, c_name = st.columns([1, 9])
-        with c_flag:
-            checked = st.checkbox("", value=(pid in flagged), key=f"flag_{pid}", label_visibility="collapsed")
-            if checked: flagged.add(pid)
-            else: flagged.discard(pid)
-        with c_name:
-            st.markdown(f"**{p['Name']}** - {pr.get(pid, '-')} - Camisa: {SHIRT_MAP.get(p.get('ShirtSize',0),'-')}")
-
-    parts_flagged = [p for p in filtered_lbl if p["Id"] in flagged]
-    base_list = parts_flagged if parts_flagged else filtered_lbl
-    parts_to_print = [p for p in base_list for _ in range(int(repeat_qty))]
+    # Leitura do estado atual antes da renderização
+    parts_flagged = [p for p in filtered_lbl if st.session_state.get(f"flag_{p['Id']}", False)]
+    parts_to_print = [p for p in parts_flagged for _ in range(int(repeat_qty))]
     
-    st.divider()
+    # ─── BOTÕES DE DOWNLOAD NO TOPO ───
     if parts_to_print:
-        st.info(f"📄 **{len(parts_to_print)}** etiqueta(s) selecionada(s).")
+        st.info(f"📄 **{len(parts_to_print)}** etiqueta(s) selecionada(s) para impressão.")
         b1, b2 = st.columns(2)
         with b1:
             pdf_c = generate_labels_pimaco(parts_to_print, "blusa", assigns, rooms)
@@ -1037,6 +1023,19 @@ def page_labels(eid, ev):
         with b2:
             pdf_n = generate_labels_pimaco(parts_to_print, "nome", assigns, rooms)
             st.download_button("🖨️ Baixar Etiquetas (Só Nome)", pdf_n, "etiquetas_nomes.pdf", "application/pdf", use_container_width=True)
+    else:
+        st.warning("Nenhuma etiqueta selecionada. Marque os participantes abaixo.")
+
+    st.markdown(f"**Lista de Participantes ({len(filtered_lbl)})**")
+    
+    # Renderização da lista
+    for p in filtered_lbl:
+        pid = p["Id"]
+        c_flag, c_name = st.columns([1, 9])
+        with c_flag:
+            st.checkbox("", key=f"flag_{pid}", label_visibility="collapsed")
+        with c_name:
+            st.markdown(f"**{p['Name']}** - {pr.get(pid, '-')} - Camisa: {SHIRT_MAP.get(p.get('ShirtSize',0),'-')}")
 
 # ─── MÓDULO ABA DE CARTAS ───────────────────────────────
 def page_letters(eid, ev):
@@ -1326,6 +1325,7 @@ def page_print_management(eid, ev):
                     sec_status[pid]["print_status"] = "done"
                     save_secretary_state(eid, *load_secretary_state(eid)[:2], sec_status)
                     st.rerun()
+
 
 def page_settings(eid, ev):
     st.markdown(f"## ⚙️ Configurações — {ev['Name']}")
