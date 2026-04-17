@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Estável, Otimizada e com Gráficos
+Versão Final - Modo Claro (White Theme) + SaaS Limpo
 """
 import streamlit as st
 import pandas as pd
@@ -15,47 +15,56 @@ def get_sb() -> Client:
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-# ─── Custom CSS (SaaS, Dark Mode, Neon Accents) ──────────────────────────────
+# ─── Custom CSS (Light Mode / Clean SaaS) ────────────────────────────────────
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* Global Dark Theme Settings */
-    .stApp { background-color: #0d1117; color: #e6edf3; }
+    /* Força textos para cor escura e fundo principal claro caso o Streamlit tente misturar */
+    .stApp { background-color: #f8fafc; color: #1e293b; }
     
-    /* Neumorphic/SaaS Containers */
+    /* Neumorphic/SaaS Containers - Light */
     div[data-testid="stContainer"] {
-        border: 1px solid #30363d !important;
-        border-radius: 12px !important;
-        background-color: #161b22 !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        transition: all 0.3s ease;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 10px !important;
+        background-color: #ffffff !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        transition: all 0.2s ease;
         padding: 1rem;
     }
     div[data-testid="stContainer"]:hover {
-        border-color: #00ffcc !important;
-        box-shadow: 0 0 15px rgba(0, 255, 204, 0.15);
+        border-color: #cbd5e1 !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
 
-    /* Primary Neon Buttons */
+    /* Primary Buttons - Blue */
     .stButton>button[kind="primary"] {
-        background: linear-gradient(90deg, #00ffcc, #00bfff) !important;
-        color: #000000 !important;
-        font-weight: 700 !important;
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
         border: none !important;
-        border-radius: 8px !important;
-        box-shadow: 0 0 10px rgba(0, 255, 204, 0.4) !important;
-        transition: transform 0.1s;
+        border-radius: 6px !important;
     }
     .stButton>button[kind="primary"]:hover {
-        transform: scale(1.02);
-        box-shadow: 0 0 15px rgba(0, 255, 204, 0.6) !important;
+        background-color: #1d4ed8 !important;
     }
+    
+    /* Download Buttons - Green */
     .stDownloadButton>button {
-        background: linear-gradient(90deg, #39ff14, #00cc00) !important;
-        color: #000000 !important;
-        font-weight: 700 !important;
+        background-color: #16a34a !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
         border: none !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
+    }
+    .stDownloadButton>button:hover {
+        background-color: #15803d !important;
+    }
+    
+    /* Ajuste de cor nos expanders para modo claro */
+    .streamlit-expanderHeader {
+        background-color: #f1f5f9 !important;
+        border-radius: 6px;
+        color: #0f172a !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -635,11 +644,11 @@ def page_dashboard(eid, ev):
                     names=["Recebeu Carta", "Não Recebeu"], 
                     values=[recebeu_carta, nao_recebeu_carta],
                     title=f"Cartas ({total_enc} Encontristas)",
-                    color_discrete_sequence=["#00ffcc", "#ff4444"],
+                    color_discrete_sequence=["#10b981", "#ef4444"], # Verde claro e Vermelho suave
                     hole=0.4
                 )
                 fig_cartas.update_traces(textposition='inside', textinfo='percent+label+value')
-                fig_cartas.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                fig_cartas.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#1e293b'))
                 st.plotly_chart(fig_cartas, use_container_width=True)
 
             with col_chart2:
@@ -647,11 +656,11 @@ def page_dashboard(eid, ev):
                     names=["Recebeu Foto", "Não Recebeu"], 
                     values=[recebeu_foto, nao_recebeu_foto],
                     title=f"Fotos ({total_enc} Encontristas)",
-                    color_discrete_sequence=["#00bfff", "#ff4444"],
+                    color_discrete_sequence=["#3b82f6", "#ef4444"], # Azul claro e Vermelho suave
                     hole=0.4
                 )
                 fig_fotos.update_traces(textposition='inside', textinfo='percent+label+value')
-                fig_fotos.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+                fig_fotos.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#1e293b'))
                 st.plotly_chart(fig_fotos, use_container_width=True)
                 
         except ImportError:
@@ -659,18 +668,18 @@ def page_dashboard(eid, ev):
             with col_chart1:
                 st.markdown(f"**Cartas ({total_enc} Encontristas)**")
                 fig1, ax1 = plt.subplots(figsize=(4, 4))
-                fig1.patch.set_facecolor('#161b22')
+                fig1.patch.set_facecolor('#ffffff')
                 ax1.pie([recebeu_carta, nao_recebeu_carta], labels=["Recebeu Carta", "Não Recebeu"], autopct='%1.1f%%', 
-                        startangle=90, colors=["#00ffcc", "#ff4444"], textprops={'color':"w"})
+                        startangle=90, colors=["#10b981", "#ef4444"], textprops={'color':"black"})
                 ax1.axis('equal')
                 st.pyplot(fig1)
                 
             with col_chart2:
                 st.markdown(f"**Fotos ({total_enc} Encontristas)**")
                 fig2, ax2 = plt.subplots(figsize=(4, 4))
-                fig2.patch.set_facecolor('#161b22')
+                fig2.patch.set_facecolor('#ffffff')
                 ax2.pie([recebeu_foto, nao_recebeu_foto], labels=["Recebeu Foto", "Não Recebeu"], autopct='%1.1f%%', 
-                        startangle=90, colors=["#00bfff", "#ff4444"], textprops={'color':"w"})
+                        startangle=90, colors=["#3b82f6", "#ef4444"], textprops={'color':"black"})
                 ax2.axis('equal')
                 st.pyplot(fig2)
     else:
@@ -689,7 +698,7 @@ def page_participants(eid, ev):
             a1,a2 = st.columns(2)
             with a1: pn=st.text_input("Nome*"); pg=st.selectbox("Gênero",["Masculino","Feminino","Não informado"]); pp=st.text_input("Telefone")
             with a2: pc=st.selectbox("Categoria",CATEGORY_OPTIONS); ps=st.selectbox("Camiseta",["-"]+SHIRT_KEYS); psc=st.text_input("Setor"); pgc=st.text_input("Grupo de Conexão")
-            if st.form_submit_button("Adicionar Manualmente"):
+            if st.form_submit_button("Adicionar Manualmente", type="primary"):
                 if not pn: st.error("Nome obrigatório."); return
                 get_sb().table("Participants").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Name":pn,"Gender":GENDER_REV.get(pg,0),"ShirtSize":SHIRT_REV.get(ps,0),"Category":pc,"Phone":pp or None,"ConnectionSector":psc or None,"ConnectionGroup":pgc or None,"CreatedAtUtc":utcnow()}).execute()
                 st.success(f"'{pn}' adicionado!"); st.rerun()
@@ -953,7 +962,7 @@ def generate_letters_docx(participant_name, letters_list):
     
     for i, carta in enumerate(letters_list):
         if i > 0: 
-            doc.add_page_break()  # Força uma nova página por carta
+            doc.add_page_break()
         
         h = doc.add_paragraph()
         h.alignment = WD_ALIGN_PARAGRAPH.CENTER
