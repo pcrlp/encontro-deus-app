@@ -1,5 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
+Versão Final - Estável e Otimizada
 """
 import streamlit as st
 import pandas as pd
@@ -13,51 +14,6 @@ def get_sb() -> Client:
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-# ─── Custom CSS (SaaS, Dark Mode, Neon Accents) ──────────────────────────────
-def inject_custom_css():
-    st.markdown("""
-    <style>
-    /* Global Dark Theme Settings */
-    .stApp { background-color: #0d1117; color: #e6edf3; }
-    
-    /* Neumorphic/SaaS Containers */
-    div[data-testid="stContainer"] {
-        border: 1px solid #30363d !important;
-        border-radius: 12px !important;
-        background-color: #161b22 !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        transition: all 0.3s ease;
-        padding: 1rem;
-    }
-    div[data-testid="stContainer"]:hover {
-        border-color: #00ffcc !important;
-        box-shadow: 0 0 15px rgba(0, 255, 204, 0.15);
-    }
-
-    /* Primary Neon Buttons */
-    .stButton>button[kind="primary"] {
-        background: linear-gradient(90deg, #00ffcc, #00bfff) !important;
-        color: #000000 !important;
-        font-weight: 700 !important;
-        border: none !important;
-        border-radius: 8px !important;
-        box-shadow: 0 0 10px rgba(0, 255, 204, 0.4) !important;
-        transition: transform 0.1s;
-    }
-    .stButton>button[kind="primary"]:hover {
-        transform: scale(1.02);
-        box-shadow: 0 0 15px rgba(0, 255, 204, 0.6) !important;
-    }
-    .stDownloadButton>button {
-        background: linear-gradient(90deg, #39ff14, #00cc00) !important;
-        color: #000000 !important;
-        font-weight: 700 !important;
-        border: none !important;
-        border-radius: 8px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
 # ─── Enums ────────────────────────────────────────────────
 GENDER_MAP = {0: "-", 1: "Masculino", 2: "Feminino"}
@@ -134,8 +90,6 @@ def time_to_minutes(t):
     except: return None
 
 # ─── Data loaders ─────────────────────────────────────────────────────────────
-@st.cache_data(ttl=10)
-def get_cached_events(): return load_events()
 def load_events(): return get_sb().table("Events").select("*").order("CreatedAtUtc", desc=True).execute().data or []
 def load_event(eid):
     r = get_sb().table("Events").select("*").eq("Id", eid).execute(); return r.data[0] if r.data else None
@@ -471,8 +425,7 @@ def _do_load_letters(eid, url):
         ct = find_header(df.columns, ["Para quem","Destinatário","Para","Nome do Encontrista","Encontrista","Nome do encontrista:","Nome do encontrista"])
         cf = find_header(df.columns, ["De quem","Remetente","De","Nome de quem escreve","Seu nome","Seu nome:"])
         cm = find_header(df.columns, ["Mensagem","Carta","Texto","Conteúdo","Escreva algo especial para ele(a) aqui:","Escreva algo especial para ele(a) aqui","Mensagem para ele(a)"])
-        if not ct: return False, f"Coluna 'Para quem' não encontrada."
-        if not cm: return False, f"Coluna 'Mensagem' não encontrada."
+        if not ct or not cm: return False, "Colunas não encontradas."
         letters = {}
         for _, row in df.iterrows():
             to = safe_str(row.get(ct))
@@ -481,7 +434,7 @@ def _do_load_letters(eid, url):
             msg = safe_str(row.get(cm)) or ""
             if to and msg: letters.setdefault(to, []).append({"sender": sender, "message": msg})
         total = sum(len(v) for v in letters.values())
-        st.session_state[f"letters_dl_{eid}"] = {"ts": datetime.now().strftime("%H:%M"), "total": total}
+        st.session_state[f"letters_dl_{eid}"] = {"ts": datetime.now().strftime("%H:%M:%S"), "total": total}
         st.session_state[f"letters_data_{eid}"] = letters
         return True, f"✅ {total} carta(s) carregadas"
     except Exception as e:
@@ -494,8 +447,7 @@ def _do_load_photos(eid, url):
         df.columns = [c.strip() for c in df.columns]
         cn = find_header(df.columns, ["Nome do Encontrista", "Nome do encontrista:", "Nome do encontrista", "Encontrista", "Nome"])
         cp = find_header(df.columns, ["Foto", "Fotos", "URL da Foto", "URL das Fotos", "URL", "Link"])
-        if not cn: return False, f"Coluna 'Nome do Encontrista' não encontrada."
-        if not cp: return False, f"Coluna 'Foto' não encontrada."
+        if not cn or not cp: return False, "Colunas não encontradas."
         groups = {}
         for _, row in df.iterrows():
             name = safe_str(row.get(cn)); photo = safe_str(row.get(cp))
@@ -505,32 +457,31 @@ def _do_load_photos(eid, url):
                     lk = lk.strip()
                     if lk: groups[name].append(lk)
         total = sum(len(v) for v in groups.values())
-        prev = st.session_state.get(f"photos_dl_{eid}", {}).get("total", total)
-        st.session_state[f"photos_prev_count_{eid}"] = prev
-        st.session_state[f"photos_dl_{eid}"] = {"ts": datetime.now().strftime("%H:%M"), "total": total}
+        st.session_state[f"photos_dl_{eid}"] = {"ts": datetime.now().strftime("%H:%M:%S"), "total": total}
         st.session_state[f"photo_groups_{eid}"] = groups
         st.session_state[f"photos_loaded_{eid}"] = True
         return True, f"✅ {total} foto(s) mapeadas"
     except Exception as e:
         return False, str(e)
 
-# ─── Default Schedule ─────────────────────────────────────────────────────────
-DEF_SAB = [("07:00","07:30","Chegada dos Encontristas","",5),("07:30","08:30","CAFÉ","",3)]
-DEF_DOM = [("07:00","07:30","DESPERTAR DOS ENCONTRISTAS","",5),("07:30","08:30","CAFÉ","",3)]
-
-def seed_schedule(eid):
-    if load_schedule(eid): return
-    sb = get_sb()
-    for i,(s,e,t,sp,k) in enumerate(DEF_SAB):
-        sb.table("ScheduleItems").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Day":"Sábado","Start":s,"End":e,"Title":t,"Speaker":sp or None,"Kind":k,"Order":i,"CreatedAtUtc":utcnow()}).execute()
-    for i,(s,e,t,sp,k) in enumerate(DEF_DOM):
-        sb.table("ScheduleItems").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Day":"Domingo","Start":s,"End":e,"Title":t,"Speaker":sp or None,"Kind":k,"Order":i,"CreatedAtUtc":utcnow()}).execute()
+def make_gdrive_view_url(raw_url):
+    if not raw_url: return None
+    raw_url = raw_url.strip(); fid = None
+    m = re.search(r"[?&]id=([A-Za-z0-9\-_]+)", raw_url, re.I)
+    if m: fid = m.group(1)
+    if not fid:
+        m = re.search(r"/d/([A-Za-z0-9\-_]+)", raw_url, re.I)
+        if m: fid = m.group(1)
+    if not fid and re.match(r"^[A-Za-z0-9\-_]{20,}$", raw_url): fid = raw_url
+    if fid: return f"https://drive.google.com/file/d/{fid}/view"
+    return raw_url
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGES
 # ═══════════════════════════════════════════════════════════════════════════════
 def show_login():
-    st.markdown("## 🔐 Gestão Encontro com Deus"); st.caption("Informe a senha para acessar.")
+    st.markdown("## 🔐 Gestão Encontro com Deus")
+    st.caption("Informe a senha para acessar.")
     pwd = st.text_input("Senha", type="password", key="lp")
     if st.button("Entrar", type="primary", use_container_width=True):
         if pwd == st.secrets.get("APP_PASSWORD", "encontro2025"):
@@ -547,11 +498,12 @@ def page_events():
         if st.button("＋ Criar novo evento", type="primary", use_container_width=True): st.session_state.page = "event_new"; st.rerun()
     if not events: st.info("Nenhum evento criado ainda."); return
     for ev in events:
-        with st.container():
+        with st.container(border=True):
             a, b, c = st.columns([4, 2, 1])
             with a: st.markdown(f"**{ev['Name']}**"); st.caption(f"{fmt_date_br(ev.get('StartDate'))} • {fmt_date_br(ev.get('EndDate'))}")
             with b:
-                if st.button("Abrir →", key=f"d_{ev['Id']}", use_container_width=True, type="primary"): st.session_state.current_event = ev["Id"]; st.session_state.page = "dashboard"; st.rerun()
+                if st.button("Abrir Dashboard →", key=f"d_{ev['Id']}", use_container_width=True, type="primary"): 
+                    st.session_state.current_event = ev["Id"]; st.session_state.page = "dashboard"; st.rerun()
             with c:
                 if st.button("🗑️", key=f"x_{ev['Id']}"):
                     sb = get_sb()
@@ -571,7 +523,7 @@ def page_event_new():
             if not name or len(name) < 3: st.error("Nome mín. 3 caracteres."); return
             nid = str(uuid.uuid4())
             get_sb().table("Events").insert({"Id": nid, "Name": name, "StartDate": start.isoformat(), "EndDate": end.isoformat(), "Location": loc or None, "Status": "Config", "CreatedAtUtc": utcnow()}).execute()
-            seed_schedule(nid); st.session_state.current_event = nid; st.session_state.page = "dashboard"; st.rerun()
+            st.session_state.current_event = nid; st.session_state.page = "dashboard"; st.rerun()
 
 def event_sidebar(eid):
     ev = load_event(eid)
@@ -579,19 +531,14 @@ def event_sidebar(eid):
     with st.sidebar:
         st.markdown(f"### {ev['Name']}")
         if ev.get("StartDate"): st.caption(f"📅 {fmt_date_br(ev['StartDate'])} — {fmt_date_br(ev.get('EndDate'))}")
-        if ev.get("Location"):  st.caption(f"📍 {ev['Location']}")
         st.divider()
         menu_items = {
             "dashboard":"📊 Dashboard",
             "participants":"👥 Participantes",
             "rooms":"🏠 Quartos",
-            "schedule":"📋 Cronograma",
-            "letters":"💌 Cartas",
-            "labels":"🏷️ Etiquetas",
-            "photos":"📸 Fotos",
-            "secretary":"🗂️ Secretária",
-            "print_management":"🖨️ Centro de Impressão",
-            "settings":"⚙️ Config"
+            "secretary":"🗂️ Secretaria",
+            "print_management":"🖨️ Gestão de Impressão",
+            "settings":"⚙️ Configurações"
         }
         for k, label in menu_items.items():
             is_active = st.session_state.get("page") == k
@@ -608,6 +555,7 @@ def page_dashboard(eid, ev):
     srv_com = [p for p in parts if is_server_with_shirt(p.get("Category"))]
     srv_sem = [p for p in parts if is_server_no_shirt(p.get("Category"))]
     equipe  = [p for p in parts if norm(p.get("Category","")).startswith("equipe")]
+    
     c1,c2,c3,c4 = st.columns(4)
     c1.metric("Encontristas (M)", sum(1 for p in enc if p.get("Gender")==1))
     c2.metric("Encontristas (F)", sum(1 for p in enc if p.get("Gender")==2))
@@ -626,18 +574,18 @@ def page_participants(eid, ev):
         st.divider()
         with st.form("ap"):
             a1,a2 = st.columns(2)
-            with a1: pn=st.text_input("Nome*"); pg=st.selectbox("Gênero",["Masculino","Feminino","Não informado"]); pp=st.text_input("Telefone"); pb=st.text_input("Nascimento (dd/mm/aaaa)")
+            with a1: pn=st.text_input("Nome*"); pg=st.selectbox("Gênero",["Masculino","Feminino","Não informado"]); pp=st.text_input("Telefone")
             with a2: pc=st.selectbox("Categoria",CATEGORY_OPTIONS); ps=st.selectbox("Camiseta",["-"]+SHIRT_KEYS); psc=st.text_input("Setor"); pgc=st.text_input("Grupo de Conexão")
             if st.form_submit_button("Adicionar Manualmente"):
                 if not pn: st.error("Nome obrigatório."); return
-                get_sb().table("Participants").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Name":pn,"Gender":GENDER_REV.get(pg,0),"ShirtSize":SHIRT_REV.get(ps,0),"Category":pc,"Phone":pp or None,"BirthDate":parse_date_br(pb) if pb else None,"ConnectionSector":psc or None,"ConnectionGroup":pgc or None,"CreatedAtUtc":utcnow()}).execute()
+                get_sb().table("Participants").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Name":pn,"Gender":GENDER_REV.get(pg,0),"ShirtSize":SHIRT_REV.get(ps,0),"Category":pc,"Phone":pp or None,"ConnectionSector":psc or None,"ConnectionGroup":pgc or None,"CreatedAtUtc":utcnow()}).execute()
                 st.success(f"'{pn}' adicionado!"); st.rerun()
 
     parts  = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
     rm = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"],"-") for a in assigns}
 
     fc1,fc2,fc3,fc4 = st.columns(4)
-    with fc1: search = st.text_input("🔍 Nome", key="ps")
+    with fc1: search = st.text_input("🔍 Buscar Nome", key="ps")
     with fc2: fg     = st.selectbox("Sexo", ["Todos","Masculino","Feminino"], key="fg")
     with fc3: fc_sel = st.selectbox("Categoria", ["Todas","Encontrista","Servo","Equipe"], key="fc")
     with fc4: fsc    = st.text_input("Setor", key="fsc")
@@ -656,7 +604,6 @@ def page_participants(eid, ev):
     ac1, ac2 = st.columns(2)
     with ac1:
         if filtered:
-            # Direct Download - No double clicking
             pdf_data = generate_sector_pdf(filtered, ev_name=ev["Name"], assigns=assigns, rooms=rooms)
             st.download_button("⬇️ Baixar PDF Setores", data=pdf_data, file_name="setores.pdf", mime="application/pdf", use_container_width=True)
     with ac2:
@@ -670,17 +617,18 @@ def page_participants(eid, ev):
     else:
         for p in filtered:
             pid = p["Id"]; edit_key = f"pedit_{pid}"
-            age = age_from(p.get("BirthDate")); quarto = pr.get(pid, "-")
-            with st.container():
+            quarto = pr.get(pid, "-")
+            with st.container(border=True):
                 c1, c2, c3 = st.columns([6, 1, 1])
                 with c1:
-                    st.markdown(f"**{p['Name']}** · {GENDER_MAP.get(p.get('Gender',0),'-')} · {age or '?'} anos · Camisa: {SHIRT_MAP.get(p.get('ShirtSize',0),'-')}")
+                    st.markdown(f"**{p['Name']}** · {GENDER_MAP.get(p.get('Gender',0),'-')} · Camisa: {SHIRT_MAP.get(p.get('ShirtSize',0),'-')}")
                     st.caption(f"{p.get('Category') or '-'} · Quarto: {quarto} · Setor: {p.get('ConnectionSector') or '-'}")
                 with c2:
-                    if st.button("✏️", key=f"ebtn_{pid}", use_container_width=True): st.session_state[edit_key] = not st.session_state.get(edit_key, False); st.rerun()
+                    if st.button("✏️ Editar", key=f"ebtn_{pid}", use_container_width=True): st.session_state[edit_key] = not st.session_state.get(edit_key, False); st.rerun()
                 with c3:
-                    if st.button("🗑️", key=f"delbtn_{pid}", use_container_width=True):
+                    if st.button("🗑️ Apagar", key=f"delbtn_{pid}", use_container_width=True):
                         sb2 = get_sb(); sb2.table("RoomAssignments").delete().eq("ParticipantId", pid).execute(); sb2.table("Participants").delete().eq("Id", pid).execute(); st.rerun()
+                
                 if st.session_state.get(edit_key, False):
                     with st.form(f"pform_{pid}"):
                         ea, eb = st.columns(2)
@@ -692,7 +640,7 @@ def page_participants(eid, ev):
                             esh  = st.selectbox("Camisa", ["-"]+SHIRT_KEYS, index=(["-"]+SHIRT_KEYS).index(SHIRT_MAP.get(p.get("ShirtSize",0),"-")))
                             esc  = st.text_input("Setor", value=p.get("ConnectionSector") or "")
                             egc  = st.text_input("GC", value=p.get("ConnectionGroup") or "")
-                        if st.form_submit_button("💾 Salvar", type="primary"):
+                        if st.form_submit_button("💾 Salvar Modificações", type="primary"):
                             get_sb().table("Participants").update({"Name": en, "Gender": GENDER_REV.get(eg, 0), "ShirtSize": SHIRT_REV.get(esh, 0), "Category": ecat, "ConnectionSector": esc or None, "ConnectionGroup": egc or None, "UpdatedAtUtc": utcnow()}).eq("Id", pid).execute()
                             st.session_state.pop(edit_key, None); st.rerun()
 
@@ -701,13 +649,14 @@ def page_rooms(eid, ev):
     parts  = load_participants(eid); rooms = load_rooms(eid); assigns = load_assignments(eid)
     pm     = {p["Id"]: p for p in parts}; sb2 = get_sb()
 
-    # Auto-distribuição e Novo quarto
+    # Opções superiores
     b1, b2, b3 = st.columns([1, 1, 2])
     with b1:
         if st.button("🔀 Auto-Distribuir", type="primary", use_container_width=True):
-            n, nr, err = distribute_rooms(eid)
-            if err: st.error(err)
-            else: st.success(f"✅ {n} alocados!"); st.rerun()
+            with st.spinner("Distribuindo..."):
+                n, nr, err = distribute_rooms(eid)
+                if err: st.error(err)
+                else: st.success(f"✅ {n} alocados!"); st.rerun()
     with b2:
         if rooms:
             pdf_r = generate_rooms_pdf(eid)
@@ -719,98 +668,115 @@ def page_rooms(eid, ev):
             with rc1: rn   = st.text_input("Nome")
             with rc2: rcap = st.number_input("Capacidade", min_value=1, value=10)
             with rc3: rg   = st.selectbox("Gênero", ["Feminino","Masculino"])
-            if st.form_submit_button("Criar"):
+            if st.form_submit_button("Criar Quarto", type="primary"):
                 if rn:
                     sb2.table("Rooms").insert({"Id":str(uuid.uuid4()),"EventId":eid,"Name":rn,"Capacity":rcap,"Gender":2 if rg=="Feminino" else 1,"CreatedAtUtc":utcnow()}).execute(); st.rerun()
 
     st.divider()
     if not rooms: st.info("Nenhum quarto cadastrado."); return
 
-    am = {}; aids = set(); asgn_map = {}
+    am = {}; aids = set()
     for a in assigns: 
         am.setdefault(a["RoomId"], []).append(a)
         aids.add(a["ParticipantId"])
-        asgn_map[a["ParticipantId"]] = a["RoomId"]
 
-    # Render Room Cards
+    # Renderização em formato de CARDS expansíveis
     for room in rooms:
         rid = room["Id"]; occs = am.get(rid, [])
-        leader = pm.get(room.get("LeaderId")) if room.get("LeaderId") else None
+        gender_str = GENDER_MAP.get(room.get('Gender', 0), '-')
         
-        with st.expander(f"🏠 {room['Name']} ({GENDER_MAP.get(room.get('Gender',0),'-')}) — {len(occs)}/{room['Capacity']} vagas"):
-            h1, h2, h3 = st.columns([4,1,1])
-            with h1: st.caption(f"Líder: {leader['Name'] if leader else '-'}")
-            with h2:
-                with st.popover("⚙️ Editar Quarto"):
+        # O Card expansível do Quarto
+        with st.expander(f"🏠 {room['Name']} ({gender_str}) — {len(occs)}/{room['Capacity']} vagas", expanded=False):
+            
+            # Cabeçalho interno do quarto: Edição e Exclusão
+            col_ed1, col_ed2 = st.columns([3, 1])
+            with col_ed1:
+                with st.popover("⚙️ Editar Dados do Quarto"):
                     new_rn = st.text_input("Nome", value=room['Name'], key=f"rn_{rid}")
-                    new_cap = st.number_input("Cap.", value=room['Capacity'], min_value=1, key=f"rc_{rid}")
+                    new_cap = st.number_input("Capacidade", value=room['Capacity'], min_value=1, key=f"rc_{rid}")
                     new_g_str = "Masculino" if room.get('Gender')==1 else "Feminino"
                     new_g = st.selectbox("Gênero", ["Feminino","Masculino"], index=["Feminino","Masculino"].index(new_g_str), key=f"rg_{rid}")
-                    if st.button("Salvar Modificações", type="primary", key=f"sroom_{rid}"):
+                    if st.button("💾 Salvar Alterações", type="primary", key=f"sroom_{rid}"):
                         sb2.table("Rooms").update({"Name":new_rn, "Capacity":new_cap, "Gender":2 if new_g=="Feminino" else 1}).eq("Id",rid).execute(); st.rerun()
-            with h3:
-                if st.button("🗑️ Apagar Quarto", key=f"delr_{rid}"):
+            with col_ed2:
+                if st.button("🗑️ Apagar Quarto", key=f"delr_{rid}", use_container_width=True):
                     sb2.table("RoomAssignments").delete().eq("RoomId",rid).execute(); sb2.table("Rooms").delete().eq("Id",rid).execute(); st.rerun()
 
             st.divider()
+
+            # Lista de participantes dentro do quarto
             if occs:
                 for a in occs:
                     p = pm.get(a["ParticipantId"])
                     if not p: continue
-                    o1, o2, o3 = st.columns([6, 2, 1])
-                    with o1: st.markdown(f"👤 **{p['Name']}**")
+                    o1, o2, o3 = st.columns([5, 3, 1])
+                    with o1: 
+                        st.markdown(f"👤 **{p['Name']}**")
                     with o2:
-                        # LOGIC TO MOVE/SWAP
                         other_rooms = [r for r in rooms if r["Id"] != rid and (r.get("Gender",0)==p.get("Gender",0) or r.get("Gender",0)==0)]
                         if other_rooms:
-                            with st.popover("🔄 Mover"):
-                                dest_room_name = st.selectbox("Destino", [r["Name"] for r in other_rooms], key=f"dest_{a['Id']}")
+                            with st.popover("🔄 Trocar/Mover"):
+                                dest_room_name = st.selectbox("Mover para:", [r["Name"] for r in other_rooms], key=f"dest_{a['Id']}")
                                 dest_room = next(r for r in other_rooms if r["Name"]==dest_room_name)
                                 dest_occs = am.get(dest_room["Id"], [])
                                 
                                 if len(dest_occs) >= dest_room["Capacity"]:
-                                    st.warning("Quarto de destino cheio. Escolha alguém para trocar de vaga:")
+                                    st.warning("O quarto destino está cheio. Com quem você quer trocar?")
                                     swap_candidates = [pm.get(da["ParticipantId"]) for da in dest_occs if pm.get(da["ParticipantId"])]
-                                    swap_p = st.selectbox("Trocar lugar com", [c["Name"] for c in swap_candidates], key=f"swapc_{a['Id']}")
+                                    swap_p = st.selectbox("Trocar lugar com:", [c["Name"] for c in swap_candidates], key=f"swapc_{a['Id']}")
                                     if st.button("Executar Troca", type="primary", key=f"bswap_{a['Id']}"):
-                                        swap_target_pid = next(c["Id"] for c in swap_candidates if c["Name"]==swap_p)
-                                        target_asgn_id = next(da["Id"] for da in dest_occs if da["ParticipantId"]==swap_target_pid)
-                                        # Swap Logic
-                                        sb2.table("RoomAssignments").update({"RoomId": dest_room["Id"]}).eq("Id", a["Id"]).execute()
-                                        sb2.table("RoomAssignments").update({"RoomId": rid}).eq("Id", target_asgn_id).execute()
-                                        st.rerun()
+                                        try:
+                                            # Lógica segura de troca para evitar erro da API Supabase
+                                            asgn_a_id = a["Id"]
+                                            target_pid = next((c["Id"] for c in swap_candidates if c["Name"] == swap_p), None)
+                                            target_asgn = next((da for da in dest_occs if da["ParticipantId"] == target_pid), None)
+                                            
+                                            if target_asgn:
+                                                asgn_b_id = target_asgn["Id"]
+                                                # Move a pessoa do quarto destino para o quarto atual primeiro
+                                                sb2.table("RoomAssignments").update({"RoomId": rid}).eq("Id", asgn_b_id).execute()
+                                                # Move a pessoa atual para o quarto destino
+                                                sb2.table("RoomAssignments").update({"RoomId": dest_room["Id"]}).eq("Id", asgn_a_id).execute()
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao realizar troca: {e}")
                                 else:
-                                    if st.button("Mover", type="primary", key=f"bmove_{a['Id']}"):
-                                        sb2.table("RoomAssignments").update({"RoomId": dest_room["Id"]}).eq("Id", a["Id"]).execute()
-                                        st.rerun()
+                                    if st.button("Mover para Quarto", type="primary", key=f"bmove_{a['Id']}"):
+                                        try:
+                                            sb2.table("RoomAssignments").update({"RoomId": dest_room["Id"]}).eq("Id", a["Id"]).execute()
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao mover: {e}")
                     with o3:
-                        if st.button("✕", key=f"rem_{a['Id']}", help="Remover do quarto"):
+                        if st.button("✕ Remover", key=f"rem_{a['Id']}"):
                             sb2.table("RoomAssignments").delete().eq("Id",a["Id"]).execute(); st.rerun()
             
+            # Adicionar nova pessoa ao quarto
             unass = [p for p in parts if p["Id"] not in aids and is_encounterist(p.get("Category")) and (p.get("Gender",0)==room.get("Gender",0) or room.get("Gender",0)==0)]
             if unass and len(occs) < room["Capacity"]:
-                sp = st.selectbox("Adicionar pessoa", [""]+[p["Name"] for p in unass], key=f"addp_{rid}")
-                if sp and st.button("＋ Adicionar ao Quarto", type="primary", key=f"badd_{rid}"):
+                sp = st.selectbox("Adicionar pessoa sem quarto:", [""]+[p["Name"] for p in unass], key=f"addp_{rid}")
+                if sp and st.button("＋ Adicionar", type="primary", key=f"badd_{rid}"):
                     pid = next(p["Id"] for p in unass if p["Name"]==sp)
                     sb2.table("RoomAssignments").insert({"Id":str(uuid.uuid4()),"EventId":eid,"RoomId":rid,"ParticipantId":pid,"CreatedAtUtc":utcnow()}).execute(); st.rerun()
 
-# ─── MÓDULO DE IMPRESSÃO (NOVO) ───────────────────────────────────────────────
+
+# ─── MÓDULO CENTRAL DE IMPRESSÃO (NOVO FLUXO) ───────────────────────────────
 def page_print_management(eid, ev):
-    st.markdown(f"## 🖨️ Central de Impressão — {ev['Name']}")
-    st.info("⚠️ **Atenção:** Ao iniciar a impressão de um encontrista, lembre-se de ir no Formulário e **remover** o nome dele da lista para bloquear novos recebimentos.")
+    st.markdown(f"## 🖨️ Gestão de Impressão — {ev['Name']}")
+    st.info("⚠️ **Atenção (Letícia/Equipe de Impressão):** Ao imprimir, vá imediatamente na planilha/formulário do Google e **remova o nome do encontrista** para travar o recebimento de novas cartas ou fotos.")
     
     parts = load_participants(eid)
     _, _, sec_status = load_secretary_state(eid)
     
-    # Filtrar quem tem solicitação de impressão
+    # Filtra apenas quem tem status requested ou printing
     print_queue = [p for p in parts if sec_status.get(p["Id"], {}).get("print_status") in ["requested", "printing"]]
     
     if not print_queue:
-        st.success("Nenhuma impressão solicitada no momento. A equipe de secretaria enviará solicitações para esta tela.")
+        st.success("Nenhuma solicitação pendente. A secretaria envia solicitações para esta tela.")
         return
 
-    # Helper para alterar o status no ato do clique
     def mark_as_printing(pid):
+        # Altera o status para que a Karina veja "Imprimindo" na aba Secretaria
         sec_status[pid]["print_status"] = "printing"
         save_secretary_state(eid, *load_secretary_state(eid)[:2], sec_status)
 
@@ -819,13 +785,12 @@ def page_print_management(eid, ev):
         status = sec_status[pid]["print_status"]
         req_by = sec_status[pid].get("print_req_by", "Secretaria")
         
-        with st.container():
-            c1, c2, c3 = st.columns([3, 1, 1])
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([4, 2, 2])
             with c1:
                 st.markdown(f"### {p['Name']}")
-                st.caption(f"Solicitado por: **{req_by}** · Status Atual: **{'🟡 Aguardando' if status == 'requested' else '🖨️ Em Andamento'}**")
+                st.caption(f"Solicitante: **{req_by}** · Status: **{'🟡 Aguardando' if status == 'requested' else '🖨️ Em Andamento (Notificado)'}**")
             
-            # Geração de Cartas
             letters_dict = st.session_state.get(f"letters_data_{eid}", {})
             user_letters = []
             for key, lts in letters_dict.items():
@@ -834,10 +799,10 @@ def page_print_management(eid, ev):
             
             with c2:
                 if user_letters:
-                    # Gera on-the-fly, 1 por folha exata sem contador
+                    # Download exato de 1 clique, gera o arquivo imediatamente.
                     docx_bytes = generate_letters_docx(p["Name"], user_letters)
                     st.download_button(
-                        f"⬇️ Baixar Cartas ({len(user_letters)})", 
+                        label=f"⬇️ Baixar Cartas ({len(user_letters)})", 
                         data=docx_bytes, 
                         file_name=f"Cartas_{norm(p['Name'])}.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -848,7 +813,6 @@ def page_print_management(eid, ev):
                     st.button("Sem cartas", disabled=True, use_container_width=True)
 
             with c3:
-                # Fotos
                 photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
                 user_photos = []
                 for key, lks in photo_groups.items():
@@ -858,9 +822,10 @@ def page_print_management(eid, ev):
                 if user_photos:
                     links_txt = f"FOTOS: {p['Name']}\n\n" + "\n".join([make_gdrive_view_url(lk) or lk for lk in user_photos])
                     st.download_button(
-                        f"⬇️ Baixar Links ({len(user_photos)})", 
-                        data=links_txt, 
+                        label=f"⬇️ Baixar Links Fotos ({len(user_photos)})", 
+                        data=links_txt.encode('utf-8'), 
                         file_name=f"Fotos_{norm(p['Name'])}.txt",
+                        mime="text/plain",
                         on_click=mark_as_printing, args=(pid,),
                         use_container_width=True, type="primary" if status=="requested" else "secondary"
                     )
@@ -868,38 +833,57 @@ def page_print_management(eid, ev):
                     st.button("Sem fotos", disabled=True, use_container_width=True)
             
             if status == "printing":
-                if st.button("✅ Marcar como Finalizado", key=f"fin_{pid}", help="Remove da fila de impressão"):
+                st.divider()
+                if st.button("✅ Concluir Impressão (Remover da Fila)", key=f"fin_{pid}", type="primary"):
                     sec_status[pid]["print_status"] = "done"
                     save_secretary_state(eid, *load_secretary_state(eid)[:2], sec_status)
                     st.rerun()
 
+# GERADOR DE WORD (1 CARTA POR PÁGINA EXATA)
 def generate_letters_docx(participant_name, letters_list):
-    from docx import Document; from docx.shared import Pt, Inches; from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx import Document
+    from docx.shared import Pt, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = Document()
+    
     for section in doc.sections:
-        section.top_margin = Inches(1); section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1.2); section.right_margin = Inches(1.2)
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1.2)
+        section.right_margin = Inches(1.2)
     
     for i, carta in enumerate(letters_list):
-        if i > 0: doc.add_page_break()
-        h = doc.add_paragraph(); h.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run_h = h.add_run(f"Para: {participant_name}"); run_h.bold = True; run_h.font.size = Pt(14)
+        if i > 0: 
+            doc.add_page_break()  # Força uma nova página por carta
+        
+        h = doc.add_paragraph()
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_h = h.add_run(f"Para: {participant_name}")
+        run_h.bold = True
+        run_h.font.size = Pt(14)
         doc.add_paragraph()
-        sender_p = doc.add_paragraph(); run_s = sender_p.add_run(f"De: {carta.get('sender','—')}"); run_s.bold = True; run_s.font.size = Pt(11)
+        
+        sender_p = doc.add_paragraph()
+        run_s = sender_p.add_run(f"De: {carta.get('sender','—')}")
+        run_s.bold = True
+        run_s.font.size = Pt(11)
         doc.add_paragraph()
+        
         msg_p = doc.add_paragraph(carta.get("message",""))
-        if msg_p.runs: msg_p.runs[0].font.size = Pt(11)
-        # O rodapé de numeração "carta x de y" foi removido conforme solicitado para imprimir limpo.
+        if msg_p.runs: 
+            msg_p.runs[0].font.size = Pt(11)
 
-    buf = io.BytesIO(); doc.save(buf); buf.seek(0); return buf.getvalue()
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
 
 def page_secretary(eid, ev):
-    st.markdown(f"## 🗂️ Secretária — {ev['Name']}")
+    st.markdown(f"## 🗂️ Secretaria — {ev['Name']}")
     parts  = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
     enc    = [p for p in parts if is_encounterist(p.get("Category"))]
     rm     = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"], "-") for a in assigns}
     
-    # Load state
     db_team, db_dist, db_status = load_secretary_state(eid)
     team = st.session_state.get(f"sec_team_{eid}", db_team)
     dist = st.session_state.get(f"sec_dist_{eid}", db_dist)
@@ -911,12 +895,15 @@ def page_secretary(eid, ev):
         st.session_state[f"sec_dist_{eid}"] = dist
         st.session_state[f"sec_status_{eid}"] = sec_status
 
-    letters = st.session_state.get(f"letters_data_{eid}", {}); photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
+    letters = st.session_state.get(f"letters_data_{eid}", {})
+    photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
+
     def count_letters(name):
         cnt = 0
         for key, lts in letters.items():
             if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): cnt += len(lts)
         return cnt
+
     def count_photos(name):
         for key, links in photo_groups.items():
             if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): return len(links)
@@ -925,19 +912,19 @@ def page_secretary(eid, ev):
     tab1, tab2 = st.tabs(["📋 Acompanhamento das Bolsas", "⚙️ Distribuição de Equipe"])
     
     with tab1:
-        # SUPER BOTÃO DE ATUALIZAÇÃO (Requisitado)
-        st.markdown("### Status Recebimento")
-        col_ref1, col_ref2 = st.columns([2, 5])
+        # BOTÃO GRANDE DE ATUALIZAÇÃO EM TEMPO REAL
+        st.markdown("### 🔄 Atualização de Recebimentos")
+        col_ref1, col_ref2 = st.columns([3, 4])
         with col_ref1:
-            if st.button("🔄 Atualizar Recebimentos (Cartas/Fotos)", type="primary", use_container_width=True):
-                with st.spinner("Buscando dados no Google Drive..."):
+            if st.button("Buscar Novas Cartas/Fotos", type="primary", use_container_width=True):
+                with st.spinner("Sincronizando com o Google Drive..."):
                     if ev.get("LettersSheetUrl"): _do_load_letters(eid, ev["LettersSheetUrl"])
                     if ev.get("PhotosSheetUrl"): _do_load_photos(eid, ev["PhotosSheetUrl"])
                     st.rerun()
         with col_ref2:
             dl_l = st.session_state.get(f"letters_dl_{eid}", {})
             dl_p = st.session_state.get(f"photos_dl_{eid}", {})
-            st.caption(f"Última verificação: Cartas ({dl_l.get('ts','Nunca')} - {dl_l.get('total',0)}) | Fotos ({dl_p.get('ts','Nunca')} - {dl_p.get('total',0)})")
+            st.info(f"**Última Sincronização:**\nCartas: {dl_l.get('ts','Nunca')} | Fotos: {dl_p.get('ts','Nunca')}")
 
         st.divider()
         if not dist:
@@ -953,7 +940,7 @@ def page_secretary(eid, ev):
                 n_cartas = count_letters(p["Name"]); n_fotos = count_photos(p["Name"])
                 quarto = pr.get(pid, "-")
                 
-                with st.container():
+                with st.container(border=True):
                     r1, r2, r3 = st.columns([3, 2, 2])
                     with r1:
                         st.markdown(f"**{p['Name']}**")
@@ -972,15 +959,15 @@ def page_secretary(eid, ev):
                                     sec_status[pid]["fotos_ok"] = not fotos_ok; persist(); st.rerun()
                     with r3:
                         if bolsa_ok:
-                            st.success("✅ Concluído")
-                            if st.button("↩️ Reabrir", key=f"reopen_{pid}"):
+                            st.success("✅ Bolsa Finalizada")
+                            if st.button("↩️ Reabrir Bolsa", key=f"reopen_{pid}"):
                                 sec_status[pid]["bolsa_ok"] = False; persist(); st.rerun()
                         else:
-                            # Fluxo de Impressão (Nova Role)
+                            # Fluxo de Impressão (Karina -> Letícia)
                             if print_stat == "requested":
-                                st.warning("🖨️ Impressão Solicitada")
+                                st.warning("🖨️ Aguardando Letícia imprimir")
                             elif print_stat == "printing":
-                                st.info("🖨️ Sendo impresso (Letícia)")
+                                st.info("🖨️ Sendo impresso (Notificado)")
                             elif print_stat == "done":
                                 if st.button("✅ Fechar Bolsa", type="primary", key=f"done_{pid}", use_container_width=True):
                                     sec_status[pid]["bolsa_ok"] = True; persist(); st.rerun()
@@ -994,38 +981,34 @@ def page_secretary(eid, ev):
     with tab2:
         st.markdown("#### Equipe Responsável pelas Bolsas")
         servos = [p for p in parts if is_server(p.get("Category"))]; servo_names = [p["Name"] for p in servos]
-        novo_membro = st.selectbox("Selecionar servo", [""] + servo_names, key="sec_sel_servo")
-        if st.button("➕ Adicionar à equipe") and novo_membro:
+        novo_membro = st.selectbox("Selecionar membro", [""] + servo_names, key="sec_sel_servo")
+        if st.button("➕ Adicionar membro à equipe") and novo_membro:
             if novo_membro not in team: team.append(novo_membro); persist(); st.rerun()
             
-        st.write(f"Membros atuais: {', '.join(team) if team else 'Nenhum'}")
-        if st.button("🔀 Distribuir encontristas automaticamente"):
+        st.write(f"Membros cadastrados: {', '.join(team) if team else 'Nenhum'}")
+        st.divider()
+        if st.button("🔀 Distribuir encontristas automaticamente (Divisão igualitária)", type="primary"):
             by_room = {}
             for p in enc: quarto = pr.get(p["Id"], "Sem quarto"); by_room.setdefault(quarto, []).append(p)
             ordered = [item for sublist in [by_room[k] for k in sorted(by_room.keys())] for item in sublist]
             new_dist = {m: [] for m in team}
             for idx, p in enumerate(ordered): new_dist[team[idx % len(team)]].append(p["Id"])
-            dist = new_dist; persist(); st.success("✅ Distribuição feita!"); st.rerun()
+            dist = new_dist; persist(); st.success("✅ Distribuição feita com sucesso!"); st.rerun()
 
-# Outras páginas (mantidas otimizadas mas com a estrutura funcional)
-def page_schedule(eid, ev): pass # Reduzido pro limite, usa o seu código original de schedule se necessário.
-def page_letters(eid, ev): pass
-def page_labels(eid, ev): pass
-def page_photos(eid, ev): pass
 def page_settings(eid, ev):
-    st.markdown(f"## ⚙️ Config — {ev['Name']}")
+    st.markdown(f"## ⚙️ Configurações — {ev['Name']}")
     with st.form("cfg"):
-        name = st.text_input("Nome", value=ev.get("Name",""))
-        lu = st.text_input("Link Planilha de Cartas", value=ev.get("LettersSheetUrl") or "")
-        phu = st.text_input("Link Planilha de Fotos", value=ev.get("PhotosSheetUrl") or "")
-        if st.form_submit_button("Salvar", type="primary"):
+        name = st.text_input("Nome do Evento", value=ev.get("Name",""))
+        lu = st.text_input("Link da Planilha de Cartas (Google Sheets)", value=ev.get("LettersSheetUrl") or "")
+        phu = st.text_input("Link da Planilha de Fotos (Google Sheets)", value=ev.get("PhotosSheetUrl") or "")
+        st.caption("Atenção: Garanta que o link seja de compartilhamento 'Qualquer pessoa com o link pode ler'")
+        if st.form_submit_button("💾 Salvar Configurações", type="primary"):
             get_sb().table("Events").update({"Name":name, "LettersSheetUrl":lu or None, "PhotosSheetUrl":phu or None, "UpdatedAtUtc":utcnow()}).eq("Id",eid).execute()
-            st.success("Salvo!"); st.rerun()
+            st.success("Configurações salvas!"); st.rerun()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 def main():
     st.set_page_config(page_title="Gestão Encontro com Deus", page_icon="⛪", layout="wide", initial_sidebar_state="expanded")
-    inject_custom_css()
 
     if "authenticated" not in st.session_state: st.session_state.authenticated = False
     if not st.session_state.authenticated and st.query_params.get("auth") == "1": st.session_state.authenticated = True
