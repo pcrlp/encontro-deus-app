@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Buscas nas abas e Correção de Leitura de Planilhas
+Versão Final - Layout SaaS + Etiquetas Restauradas + Multi-Links
 """
 import streamlit as st
 import pandas as pd
@@ -413,6 +413,103 @@ def generate_rooms_pdf(event_id):
     doc.build(elems)
     return buf.getvalue()
 
+# ─── MÓDULO ETIQUETAS PIMACO ────────────────────────────────────────────────
+def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas as rl_canvas
+    import math as _math
+
+    MM = 2.8346
+    rm = {r["Id"]: r["Name"] for r in rooms}
+    pr = {a["ParticipantId"]: rm.get(a["RoomId"], "-") for a in assigns}
+
+    PAGE_W, PAGE_H = letter
+    LBL_W = 66.7 * MM
+    LBL_H = 25.4 * MM
+    COLS = 3
+    ROWS = 10
+    PER_PAGE = COLS * ROWS
+
+    MARGIN_LEFT = 7.9 * MM
+    MARGIN_TOP = PAGE_H - (12.7 * MM)
+
+    def draw_name_wrapped(c, text, x, y, max_w, font_bold, font_size_big, font_size_small):
+        font = font_bold
+        c.setFont(font, font_size_big)
+        if c.stringWidth(text, font, font_size_big) <= max_w:
+            c.drawString(x, y, text); return font_size_big
+        words = text.split(); best_split = 1; best_diff = float("inf")
+        for i in range(1, len(words)):
+            l1 = " ".join(words[:i]); l2 = " ".join(words[i:])
+            w1 = c.stringWidth(l1, font, font_size_big); w2 = c.stringWidth(l2, font, font_size_big)
+            if w1 <= max_w and w2 <= max_w:
+                diff = abs(w1 - w2)
+                if diff < best_diff: best_diff = diff; best_split = i
+        l1 = " ".join(words[:best_split]); l2 = " ".join(words[best_split:])
+        w1 = c.stringWidth(l1, font, font_size_big); w2 = c.stringWidth(l2, font, font_size_big)
+        if w1 <= max_w and w2 <= max_w:
+            line_h = font_size_big + 1
+            c.drawString(x, y + line_h / 2, l1); c.drawString(x, y + line_h / 2 - line_h, l2)
+            return font_size_big
+        for fs in range(font_size_big - 1, 5, -1):
+            c.setFont(font, fs)
+            if c.stringWidth(text, font, fs) <= max_w:
+                c.drawString(x, y, text); return fs
+        c.setFont(font, 7)
+        while c.stringWidth(text, font, 7) > max_w and len(text) > 4: text = text[:-1]
+        c.drawString(x, y, text); return 7
+
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=letter)
+    total = len(parts_sel)
+    pages = _math.ceil(total / PER_PAGE) if total else 1
+
+    for pg in range(pages):
+        batch = parts_sel[pg * PER_PAGE:(pg + 1) * PER_PAGE]
+        for idx, p in enumerate(batch):
+            col = idx % COLS
+            row = idx // COLS
+            x = MARGIN_LEFT + col * LBL_W
+            y = MARGIN_TOP - (row + 1) * LBL_H
+
+            c.setStrokeColorRGB(0.80, 0.80, 0.80); c.setLineWidth(0.3)
+            c.rect(x, y, LBL_W, LBL_H)
+
+            PAD = 3 * MM
+            txt_x = x + PAD
+            txt_max_w = LBL_W - 2 * PAD
+
+            if label_type == "nome":
+                name = p.get("Name", "")
+                center_y = y + LBL_H / 2 - 4
+                draw_name_wrapped(c, name, txt_x, center_y, txt_max_w, "Helvetica-Bold", 9, 7)
+
+            elif label_type == "blusa":
+                name = p.get("Name", "")
+                quarto = pr.get(p["Id"], "-")
+                shirt = SHIRT_MAP.get(p.get("ShirtSize", 0), "-")
+                name_y = y + LBL_H - 15
+                draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 9, 7)
+                c.setFont("Helvetica", 7)
+                c.drawString(txt_x, y + 12, f"Quarto: {quarto}")
+                c.drawString(txt_x, y + 4,  f"Blusa: {shirt}")
+
+            else:
+                name = p.get("Name", "")
+                cat = p.get("Category") or "-"
+                quarto = pr.get(p["Id"], "-")
+                name_y = y + LBL_H - 15
+                draw_name_wrapped(c, name, txt_x, name_y, txt_max_w, "Helvetica-Bold", 9, 7)
+                c.setFont("Helvetica", 7)
+                c.drawString(txt_x, y + 12, cat[:40])
+                c.drawString(txt_x, y + 4,  f"Quarto: {quarto}")
+
+        if pg < pages - 1: c.showPage()
+
+    c.save()
+    return buf.getvalue()
+
+
 # ─── Google Sheets Integration Corrigida ─────────────────────────────────────
 def sheets_url_to_csv(url):
     if "export?format=csv" in url.lower(): return url
@@ -603,6 +700,7 @@ def event_sidebar(eid):
             "dashboard":"📊 Dashboard",
             "participants":"👥 Participantes",
             "rooms":"🏠 Quartos",
+            "labels":"🏷️ Etiquetas",
             "letters":"💌 Cartas",
             "photos":"📸 Fotos",
             "secretary":"🗂️ Secretaria",
@@ -876,6 +974,69 @@ def page_rooms(eid, ev):
                 if sp and st.button("＋ Adicionar", type="primary", key=f"badd_{rid}"):
                     pid = next(p["Id"] for p in unass if p["Name"]==sp)
                     sb2.table("RoomAssignments").insert({"Id":str(uuid.uuid4()),"EventId":eid,"RoomId":rid,"ParticipantId":pid,"CreatedAtUtc":utcnow()}).execute(); st.rerun()
+
+# ─── MÓDULO ETIQUETAS ───────────────────────────────
+def page_labels(eid, ev):
+    st.markdown(f"## 🏷️ Etiquetas — {ev['Name']}")
+    st.caption("Modelo: **Pimaco 6180** · Carta · 66,7 × 25,4 mm · **30 etiquetas/folha**")
+    parts = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
+    rm = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"],"-") for a in assigns}
+
+    f1, f2, f3 = st.columns(3)
+    with f1: search_lbl = st.text_input("🔍 Buscar por nome", key="lbl_search")
+    with f2: cat_lbl = st.selectbox("Categoria", ["Todos","Encontrista","Servo","Equipe"], key="lbl_cat")
+    with f3: room_opts = ["Todos os quartos"] + sorted([r["Name"] for r in rooms]); room_lbl = st.selectbox("🏠 Quarto", room_opts, key="lbl_room")
+
+    filtered_lbl = parts
+    if search_lbl: filtered_lbl = [p for p in filtered_lbl if search_lbl.lower() in p["Name"].lower()]
+    if cat_lbl == "Encontrista": filtered_lbl = [p for p in filtered_lbl if is_encounterist(p.get("Category"))]
+    elif cat_lbl == "Servo": filtered_lbl = [p for p in filtered_lbl if is_server(p.get("Category"))]
+    elif cat_lbl == "Equipe": filtered_lbl = [p for p in filtered_lbl if norm(p.get("Category","")).startswith("equipe")]
+    if room_lbl != "Todos os quartos": filtered_lbl = [p for p in filtered_lbl if pr.get(p["Id"], "-") == room_lbl]
+
+    repeat_qty = st.number_input("🔁 Cópias por pessoa", min_value=1, max_value=20, value=1, step=1, help="Ex: 3 = João João João Maria...")
+    
+    flag_key = f"lbl_flags_{eid}"
+    if flag_key not in st.session_state: st.session_state[flag_key] = set()
+    flagged = st.session_state[flag_key]
+
+    st.divider()
+
+    all_ids = {p["Id"] for p in filtered_lbl}
+    all_selected = len(all_ids) > 0 and all_ids.issubset(flagged)
+    
+    hdr_chk, hdr_lbl = st.columns([1, 9])
+    with hdr_chk:
+        if st.checkbox("Marcar/Desmarcar Todos", value=all_selected, key="lbl_sel_all"):
+            flagged.update(all_ids)
+        else:
+            flagged.difference_update(all_ids)
+    with hdr_lbl: st.markdown(f"**Selecionar todos** · {len(filtered_lbl)} participante(s)")
+
+    for p in filtered_lbl:
+        pid = p["Id"]
+        c_flag, c_name = st.columns([1, 9])
+        with c_flag:
+            checked = st.checkbox("", value=(pid in flagged), key=f"flag_{pid}", label_visibility="collapsed")
+            if checked: flagged.add(pid)
+            else: flagged.discard(pid)
+        with c_name:
+            st.markdown(f"**{p['Name']}** - {pr.get(pid, '-')} - Camisa: {SHIRT_MAP.get(p.get('ShirtSize',0),'-')}")
+
+    parts_flagged = [p for p in filtered_lbl if p["Id"] in flagged]
+    base_list = parts_flagged if parts_flagged else filtered_lbl
+    parts_to_print = [p for p in base_list for _ in range(int(repeat_qty))]
+    
+    st.divider()
+    if parts_to_print:
+        st.info(f"📄 **{len(parts_to_print)}** etiqueta(s) selecionada(s).")
+        b1, b2 = st.columns(2)
+        with b1:
+            pdf_c = generate_labels_pimaco(parts_to_print, "blusa", assigns, rooms)
+            st.download_button("🖨️ Baixar Etiquetas (Com Blusa/Quarto)", pdf_c, "etiquetas_completas.pdf", "application/pdf", use_container_width=True, type="primary")
+        with b2:
+            pdf_n = generate_labels_pimaco(parts_to_print, "nome", assigns, rooms)
+            st.download_button("🖨️ Baixar Etiquetas (Só Nome)", pdf_n, "etiquetas_nomes.pdf", "application/pdf", use_container_width=True)
 
 # ─── MÓDULO ABA DE CARTAS ───────────────────────────────
 def page_letters(eid, ev):
@@ -1166,7 +1327,6 @@ def page_print_management(eid, ev):
                     save_secretary_state(eid, *load_secretary_state(eid)[:2], sec_status)
                     st.rerun()
 
-
 def page_settings(eid, ev):
     st.markdown(f"## ⚙️ Configurações — {ev['Name']}")
     with st.form("cfg"):
@@ -1206,6 +1366,7 @@ def main():
         "dashboard": page_dashboard,
         "participants": page_participants,
         "rooms": page_rooms,
+        "labels": page_labels,
         "letters": page_letters,
         "photos": page_photos,
         "secretary": page_secretary,
