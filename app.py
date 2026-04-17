@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Etiquetas Centralizadas Perfeitas + Correção Mobile (Dark Mode Bug)
+Versão Final - Etiquetas Centralizadas + Checkboxes Otimizados
 """
 import streamlit as st
 import pandas as pd
@@ -16,65 +16,58 @@ def get_sb() -> Client:
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-# ─── Custom CSS (Light Mode Forçado para evitar bug no Celular) ───────────────
+# ─── Custom CSS (Light Mode / Clean SaaS) ────────────────────────────────────
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* Força o fundo claro em todo o App */
-    .stApp { background-color: #f8fafc !important; }
+    /* Força textos para cor escura e fundo principal claro */
+    .stApp { background-color: #f8fafc; color: #1e293b; }
     
-    /* FORÇA TEXTO ESCURO (Resolve o problema do celular em Modo Escuro) */
-    p, span, h1, h2, h3, h4, h5, h6, label, li {
-        color: #1e293b !important;
-    }
-
     /* Neumorphic/SaaS Containers - Light */
     div[data-testid="stContainer"] {
         border: 1px solid #e2e8f0 !important;
         border-radius: 10px !important;
         background-color: #ffffff !important;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        transition: all 0.2s ease;
         padding: 1rem;
         margin-bottom: 1rem;
     }
-    
-    /* Ajuste para as Métricas do Dashboard */
-    [data-testid="stMetricValue"] > div { color: #0f172a !important; }
-    [data-testid="stMetricLabel"] * { color: #475569 !important; }
+    div[data-testid="stContainer"]:hover {
+        border-color: #cbd5e1 !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
 
     /* Primary Buttons - Blue */
     .stButton>button[kind="primary"] {
         background-color: #2563eb !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
         border: none !important;
         border-radius: 6px !important;
     }
-    .stButton>button[kind="primary"] * {
-        color: #ffffff !important;
-        font-weight: 600 !important;
+    .stButton>button[kind="primary"]:hover {
+        background-color: #1d4ed8 !important;
     }
     
     /* Download Buttons - Green */
     .stDownloadButton>button {
         background-color: #16a34a !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
         border: none !important;
         border-radius: 6px !important;
     }
-    .stDownloadButton>button * {
-        color: #ffffff !important;
-        font-weight: 600 !important;
+    .stDownloadButton>button:hover {
+        background-color: #15803d !important;
     }
     
-    /* Expanders */
+    /* Ajuste de cor nos expanders para modo claro */
     .streamlit-expanderHeader {
         background-color: #f1f5f9 !important;
         border-radius: 6px;
-    }
-    .streamlit-expanderHeader * {
         color: #0f172a !important;
     }
-    
-    /* Avisos (Success, Info, Warning) para não ficarem apagados */
-    div[data-testid="stAlert"] * { color: #0f172a !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -396,7 +389,7 @@ def generate_rooms_pdf(event_id):
     doc.build(elems)
     return buf.getvalue()
 
-# ─── MÓDULO ETIQUETAS PIMACO (CENTRALIZAÇÃO PERFEITA) ────────────────────────
+# ─── MÓDULO ETIQUETAS PIMACO (CENTRALIZAÇÃO E EMPILHAMENTO PERFEITOS) ─────────
 def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas as rl_canvas
@@ -422,13 +415,11 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
     pages = _math.ceil(total / PER_PAGE) if total else 1
 
     def split_text_to_lines(text, font, size, max_width):
-        """Divide o texto inteligentemente para caber na largura da etiqueta"""
         c.setFont(font, size)
         if c.stringWidth(text, font, size) <= max_width: return [text]
         words = text.split()
         if len(words) <= 1: return [text]
         
-        # Tenta dividir no meio
         mid = len(words) // 2 + (len(words) % 2)
         l1 = " ".join(words[:mid])
         l2 = " ".join(words[mid:])
@@ -440,33 +431,29 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
             col = idx % COLS
             row = idx // COLS
             
-            # Posição (canto inferior esquerdo da etiqueta)
             x = MARGIN_LEFT + col * LBL_W
             y = MARGIN_TOP - (row + 1) * LBL_H
 
-            # Centro da etiqueta
             cx = x + (LBL_W / 2)
             cy = y + (LBL_H / 2)
             
-            # Margem segura para não encostar na borda (3.5 mm de cada lado)
-            max_w = LBL_W - (7 * MM)
+            # Margem super segura para os lados (desconta 3mm de cada lado)
+            max_w = LBL_W - (6 * MM) 
 
-            # Nome sempre maiúsculo
+            # Deixa sempre o nome em MAIÚSCULO para padronizar o visual
             name = str(p.get("Name", "")).strip().upper()
 
             if label_type == "nome":
-                # Só o nome
                 name_size = 10
                 name_font = "Helvetica-Bold"
                 lines = split_text_to_lines(name, name_font, name_size, max_w)
                 
-                # Encolhe se ainda estiver grande
                 while name_size > 6 and any(c.stringWidth(l, name_font, name_size) > max_w for l in lines):
                     name_size -= 0.5
                     lines = split_text_to_lines(name, name_font, name_size, max_w)
 
                 total_h = len(lines) * (name_size * 1.2)
-                start_y = cy + (total_h / 2) - name_size
+                start_y = cy + (total_h / 2) - (name_size * 0.8)
                 
                 c.setFont(name_font, name_size)
                 for l in lines:
@@ -474,7 +461,6 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
                     start_y -= (name_size * 1.2)
 
             else:
-                # Nome + Informações (Quarto e Blusa/Setor)
                 quarto = pr.get(p["Id"], "SEM QUARTO")
                 
                 if label_type == "blusa":
@@ -488,7 +474,6 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
                 name_font = "Helvetica-Bold"
                 lines = split_text_to_lines(name, name_font, name_size, max_w)
                 
-                # Encolhe o nome se ficar grande
                 while name_size > 6 and any(c.stringWidth(l, name_font, name_size) > max_w for l in lines):
                     name_size -= 0.5
                     lines = split_text_to_lines(name, name_font, name_size, max_w)
@@ -498,23 +483,18 @@ def generate_labels_pimaco(parts_sel, label_type, assigns, rooms):
                 
                 name_line_h = name_size * 1.2
                 info_line_h = info_size * 1.2
-                gap = 4
                 
-                # Altura total do bloco de texto
-                total_h = (len(lines) * name_line_h) + gap + (len(info_lines) * info_line_h)
+                # Calculando o bloco completo para encaixar exatamente no meio da etiqueta
+                total_h = (len(lines) * name_line_h) + (len(info_lines) * info_line_h)
                 
-                # Y inicial perfeitamente centralizado na etiqueta
-                start_y = cy + (total_h / 2) - name_size
+                # A partir do centro (cy), sobe metade do tamanho do bloco inteiro
+                start_y = cy + (total_h / 2) - (name_size * 0.8)
                 
-                # Imprime Nome
                 c.setFont(name_font, name_size)
                 for l in lines:
                     c.drawCentredString(cx, start_y, l)
                     start_y -= name_line_h
                     
-                start_y -= gap + (info_size * 0.2) # ajuste de linha de base
-                
-                # Imprime Informações
                 c.setFont(info_font, info_size)
                 for info in info_lines:
                     c.drawCentredString(cx, start_y, info)
@@ -787,13 +767,13 @@ def page_dashboard(eid, ev):
                 fig_cartas = px.pie(names=["Com Cartas", "Faltam"], values=[recebeu_carta, nao_recebeu_carta],
                                     title=f"Cartas (Base: {total_enc})", color_discrete_sequence=["#10b981", "#e2e8f0"], hole=0.6)
                 fig_cartas.update_traces(textposition='inside', textinfo='percent+value', hoverinfo='label+percent')
-                fig_cartas.update_layout(height=280, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5), margin=dict(t=30, b=0, l=0, r=0), font=dict(color="#1e293b"))
+                fig_cartas.update_layout(height=280, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5), margin=dict(t=30, b=0, l=0, r=0))
                 st.plotly_chart(fig_cartas, use_container_width=True)
             with col_chart2:
                 fig_fotos = px.pie(names=["Com Fotos", "Faltam"], values=[recebeu_foto, nao_recebeu_foto],
                                    title=f"Fotos (Base: {total_enc})", color_discrete_sequence=["#3b82f6", "#e2e8f0"], hole=0.6)
                 fig_fotos.update_traces(textposition='inside', textinfo='percent+value', hoverinfo='label+percent')
-                fig_fotos.update_layout(height=280, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5), margin=dict(t=30, b=0, l=0, r=0), font=dict(color="#1e293b"))
+                fig_fotos.update_layout(height=280, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5), margin=dict(t=30, b=0, l=0, r=0))
                 st.plotly_chart(fig_fotos, use_container_width=True)
         except ImportError:
             st.warning("Gráficos de pizza indisponíveis. Instale a biblioteca 'plotly'.")
@@ -991,7 +971,7 @@ def page_rooms(eid, ev):
                     pid = next(p["Id"] for p in unass if p["Name"]==sp)
                     sb2.table("RoomAssignments").insert({"Id":str(uuid.uuid4()),"EventId":eid,"RoomId":rid,"ParticipantId":pid,"CreatedAtUtc":utcnow()}).execute(); st.rerun()
 
-# ─── MÓDULO ETIQUETAS PIMACO ────────────────────────────────────────────────
+# ─── MÓDULO ETIQUETAS ───────────────────────────────
 def page_labels(eid, ev):
     st.markdown(f"## 🏷️ Etiquetas — {ev['Name']}")
     st.caption("Modelo: **Pimaco 6180** · Carta · 66,7 × 25,4 mm · **30 etiquetas/folha**")
@@ -1032,6 +1012,7 @@ def page_labels(eid, ev):
     parts_flagged = [p for p in filtered_lbl if p["Id"] in st.session_state[flag_key]]
     parts_to_print = [p for p in parts_flagged for _ in range(int(repeat_qty))]
     
+    # ─── BOTÕES DE DOWNLOAD NO TOPO ───
     if parts_to_print:
         st.info(f"📄 **{len(parts_to_print)}** etiqueta(s) selecionada(s) para impressão.")
         b1, b2 = st.columns(2)
@@ -1045,6 +1026,7 @@ def page_labels(eid, ev):
         st.warning("Nenhuma etiqueta selecionada. Marque os participantes abaixo.")
 
     st.markdown(f"**Lista de Participantes ({len(filtered_lbl)})**")
+    
     for p in filtered_lbl:
         pid = p["Id"]
         is_checked = pid in st.session_state[flag_key]
@@ -1066,7 +1048,8 @@ def page_letters(eid, ev):
     enc = [p for p in parts if is_encounterist(p.get("Category"))]
 
     col_s, col_b = st.columns([3, 1])
-    with col_s: search_l = st.text_input("🔍 Buscar por nome", key="search_letters")
+    with col_s:
+        search_l = st.text_input("🔍 Buscar por nome", key="search_letters")
     with col_b:
         if st.button("🔄 Atualizar Cartas", type="primary", use_container_width=True):
             if ev.get("LettersSheetUrl"):
@@ -1075,7 +1058,9 @@ def page_letters(eid, ev):
                 else: st.error(f"Erro: {msg}")
             else: st.warning("URL não configurada na aba Configurações.")
 
-    if search_l: enc = [p for p in enc if search_l.lower() in p["Name"].lower()]
+    if search_l:
+        enc = [p for p in enc if search_l.lower() in p["Name"].lower()]
+
     letters_dict = st.session_state.get(f"letters_data_{eid}", {})
     
     if not letters_dict and not ev.get("LettersSheetUrl"):
@@ -1104,7 +1089,8 @@ def page_letters(eid, ev):
                     key=f"ltr_dl_{p['Id']}",
                     use_container_width=True
                 )
-            else: c2.button("Sem cartas", disabled=True, key=f"ltr_dsb_{p['Id']}", use_container_width=True)
+            else:
+                c2.button("Sem cartas", disabled=True, key=f"ltr_dsb_{p['Id']}", use_container_width=True)
 
 # ─── MÓDULO ABA DE FOTOS ───────────────────────────────
 def page_photos(eid, ev):
@@ -1114,7 +1100,8 @@ def page_photos(eid, ev):
     enc = [p for p in parts if is_encounterist(p.get("Category"))]
 
     col_s, col_b = st.columns([3, 1])
-    with col_s: search_f = st.text_input("🔍 Buscar por nome", key="search_photos")
+    with col_s:
+        search_f = st.text_input("🔍 Buscar por nome", key="search_photos")
     with col_b:
         if st.button("🔄 Atualizar Fotos", type="primary", use_container_width=True):
             if ev.get("PhotosSheetUrl"):
@@ -1123,7 +1110,9 @@ def page_photos(eid, ev):
                 else: st.error(f"Erro: {msg}")
             else: st.warning("URL não configurada na aba Configurações.")
 
-    if search_f: enc = [p for p in enc if search_f.lower() in p["Name"].lower()]
+    if search_f:
+        enc = [p for p in enc if search_f.lower() in p["Name"].lower()]
+
     photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
 
     if not photo_groups and not ev.get("PhotosSheetUrl"):
@@ -1146,7 +1135,8 @@ def page_photos(eid, ev):
                 links_urls = [make_gdrive_view_url(lk) or lk for lk in user_photos]
                 if c2.button(f"🚀 Abrir {len(user_photos)} Fotos (Nova Aba)", key=f"pht_op_{p['Id']}", use_container_width=True, type="primary"):
                     open_multiple_links(links_urls)
-            else: c2.button("Sem fotos", disabled=True, key=f"pht_dsb_{p['Id']}", use_container_width=True)
+            else:
+                c2.button("Sem fotos", disabled=True, key=f"pht_dsb_{p['Id']}", use_container_width=True)
 
 # ─── MÓDULO SECRETARIA ───────────────────────────────
 def page_secretary(eid, ev):
@@ -1189,6 +1179,7 @@ def page_secretary(eid, ev):
             membro_sel = st.selectbox("👤 Ver acompanhamento de:", list(dist.keys()), key="sec_member_sel")
             pids_sel = dist.get(membro_sel, []); people_sel = [p for p in enc if p["Id"] in pids_sel]
             
+            # --- Barra de Progresso Acompanhamento ---
             total_bags = len(people_sel)
             closed_bags = sum(1 for p in people_sel if sec_status.get(p["Id"], {}).get("bolsa_ok", False))
             
@@ -1223,6 +1214,7 @@ def page_secretary(eid, ev):
                     with r3:
                         if bolsa_ok:
                             st.success("✅ Bolsa Finalizada")
+                            # Botões de Reabrir ou Reiniciar Completamente
                             s1, s2 = st.columns(2)
                             with s1:
                                 if st.button("↩️ Reabrir", key=f"reopen_{pid}", help="Apenas reabre a bolsa mantendo os marcadores"):
@@ -1345,8 +1337,10 @@ def page_checkin_status(eid, ev):
             })
         st.dataframe(pd.DataFrame(data), hide_index=True, use_container_width=True)
     else:
-        if search_faltantes: st.info("Nenhum encontrista faltante encontrado com esse nome.")
-        else: st.success("🎉 Todos os encontristas já chegaram!")
+        if search_faltantes:
+            st.info("Nenhum encontrista faltante encontrado com esse nome.")
+        else:
+            st.success("🎉 Todos os encontristas já chegaram!")
 
 # ─── MÓDULO CENTRAL DE IMPRESSÃO ───────────────────────────────
 def page_print_management(eid, ev):
@@ -1394,7 +1388,8 @@ def page_print_management(eid, ev):
                         on_click=mark_as_printing, args=(pid,),
                         use_container_width=True, type="primary" if status=="requested" else "secondary"
                     )
-                else: st.button("Sem cartas", disabled=True, use_container_width=True)
+                else:
+                    st.button("Sem cartas", disabled=True, use_container_width=True)
 
             with c3:
                 photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
@@ -1409,7 +1404,8 @@ def page_print_management(eid, ev):
                         mark_as_printing(pid)
                         open_multiple_links(links_urls)
                         st.rerun()
-                else: st.button("Sem fotos", disabled=True, use_container_width=True)
+                else:
+                    st.button("Sem fotos", disabled=True, use_container_width=True)
             
             if status == "printing":
                 st.divider()
