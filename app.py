@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Modo Claro (White Theme) + SaaS Limpo
+Versão Final - Modo Claro (White Theme) + Gráficos Ajustados
 """
 import streamlit as st
 import pandas as pd
@@ -611,75 +611,87 @@ def page_dashboard(eid, ev):
 
     # ─── GRÁFICOS DE PIZZA (Acompanhamento de Recebimentos) ───
     st.divider()
-    st.markdown("### 📈 Acompanhamento de Recebimentos")
+    st.markdown("### 📈 Progresso de Recebimentos")
     
     letters = st.session_state.get(f"letters_data_{eid}", {})
     photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
 
-    def count_letters(name):
-        cnt = 0
-        for key, lts in letters.items():
-            if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): cnt += len(lts)
-        return cnt
-
-    def count_photos(name):
-        for key, links in photo_groups.items():
-            if norm(key)==norm(name) or name.lower() in key.lower() or key.lower() in name.lower(): return len(links)
-        return 0
-
     total_enc = len(enc)
     if total_enc > 0:
-        recebeu_carta = sum(1 for p in enc if count_letters(p["Name"]) > 0)
-        nao_recebeu_carta = total_enc - recebeu_carta
+        # A lógica exata solicitada: Conta pessoas distintas na planilha do Google
+        recebeu_carta = len(letters.keys())
+        nao_recebeu_carta = max(0, total_enc - recebeu_carta)
         
-        recebeu_foto = sum(1 for p in enc if count_photos(p["Name"]) > 0)
-        nao_recebeu_foto = total_enc - recebeu_foto
+        recebeu_foto = len(photo_groups.keys())
+        nao_recebeu_foto = max(0, total_enc - recebeu_foto)
 
-        col_chart1, col_chart2 = st.columns(2)
+        # Colunas com [1, 4, 4, 1] servem para "espremer" e centralizar os gráficos
+        _, col_chart1, col_chart2, _ = st.columns([1, 4, 4, 1])
         
         try:
             import plotly.express as px
             with col_chart1:
                 fig_cartas = px.pie(
-                    names=["Recebeu Carta", "Não Recebeu"], 
+                    names=["Com Cartas", "Faltam"], 
                     values=[recebeu_carta, nao_recebeu_carta],
-                    title=f"Cartas ({total_enc} Encontristas)",
-                    color_discrete_sequence=["#10b981", "#ef4444"], # Verde claro e Vermelho suave
-                    hole=0.4
+                    title=f"Cartas (Base: {total_enc})",
+                    color_discrete_sequence=["#10b981", "#e2e8f0"], # Verde e Cinza Claro
+                    hole=0.6 # Furo maior no centro para ficar clean
                 )
-                fig_cartas.update_traces(textposition='inside', textinfo='percent+label+value')
-                fig_cartas.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#1e293b'))
+                fig_cartas.update_traces(textposition='inside', textinfo='percent+value', hoverinfo='label+percent')
+                fig_cartas.update_layout(
+                    height=280, # Altura reduzida (menor)
+                    showlegend=True, 
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                    margin=dict(t=30, b=0, l=0, r=0), 
+                    paper_bgcolor='rgba(0,0,0,0)', 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    font=dict(color='#1e293b')
+                )
                 st.plotly_chart(fig_cartas, use_container_width=True)
 
             with col_chart2:
                 fig_fotos = px.pie(
-                    names=["Recebeu Foto", "Não Recebeu"], 
+                    names=["Com Fotos", "Faltam"], 
                     values=[recebeu_foto, nao_recebeu_foto],
-                    title=f"Fotos ({total_enc} Encontristas)",
-                    color_discrete_sequence=["#3b82f6", "#ef4444"], # Azul claro e Vermelho suave
-                    hole=0.4
+                    title=f"Fotos (Base: {total_enc})",
+                    color_discrete_sequence=["#3b82f6", "#e2e8f0"], # Azul e Cinza Claro
+                    hole=0.6
                 )
-                fig_fotos.update_traces(textposition='inside', textinfo='percent+label+value')
-                fig_fotos.update_layout(showlegend=False, margin=dict(t=40, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#1e293b'))
+                fig_fotos.update_traces(textposition='inside', textinfo='percent+value', hoverinfo='label+percent')
+                fig_fotos.update_layout(
+                    height=280,
+                    showlegend=True, 
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                    margin=dict(t=30, b=0, l=0, r=0), 
+                    paper_bgcolor='rgba(0,0,0,0)', 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    font=dict(color='#1e293b')
+                )
                 st.plotly_chart(fig_fotos, use_container_width=True)
                 
         except ImportError:
             import matplotlib.pyplot as plt
             with col_chart1:
-                st.markdown(f"**Cartas ({total_enc} Encontristas)**")
-                fig1, ax1 = plt.subplots(figsize=(4, 4))
+                st.markdown(f"**Cartas (Base: {total_enc})**")
+                fig1, ax1 = plt.subplots(figsize=(3, 3)) # Reduzido
                 fig1.patch.set_facecolor('#ffffff')
-                ax1.pie([recebeu_carta, nao_recebeu_carta], labels=["Recebeu Carta", "Não Recebeu"], autopct='%1.1f%%', 
-                        startangle=90, colors=["#10b981", "#ef4444"], textprops={'color':"black"})
+                ax1.pie([recebeu_carta, nao_recebeu_carta], labels=["Com Cartas", "Faltam"], autopct='%1.1f%%', 
+                        startangle=90, colors=["#10b981", "#e2e8f0"], textprops={'color':"black"})
+                # Transforma em anel (Donut) no Matplotlib
+                centre_circle = plt.Circle((0,0),0.60,fc='white')
+                fig1.gca().add_artist(centre_circle)
                 ax1.axis('equal')
                 st.pyplot(fig1)
                 
             with col_chart2:
-                st.markdown(f"**Fotos ({total_enc} Encontristas)**")
-                fig2, ax2 = plt.subplots(figsize=(4, 4))
+                st.markdown(f"**Fotos (Base: {total_enc})**")
+                fig2, ax2 = plt.subplots(figsize=(3, 3))
                 fig2.patch.set_facecolor('#ffffff')
-                ax2.pie([recebeu_foto, nao_recebeu_foto], labels=["Recebeu Foto", "Não Recebeu"], autopct='%1.1f%%', 
-                        startangle=90, colors=["#3b82f6", "#ef4444"], textprops={'color':"black"})
+                ax2.pie([recebeu_foto, nao_recebeu_foto], labels=["Com Fotos", "Faltam"], autopct='%1.1f%%', 
+                        startangle=90, colors=["#3b82f6", "#e2e8f0"], textprops={'color':"black"})
+                centre_circle = plt.Circle((0,0),0.60,fc='white')
+                fig2.gca().add_artist(centre_circle)
                 ax2.axis('equal')
                 st.pyplot(fig2)
     else:
