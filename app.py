@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Modo Claro (White Theme) + Matemática de Gráficos Corrigida
+Versão Final - Modo Claro (White Theme) + Dashboard Atualizado
 """
 import streamlit as st
 import pandas as pd
@@ -609,10 +609,18 @@ def page_dashboard(eid, ev):
     c5,c6,c7,c8 = st.columns(4)
     c5.metric("Equipe", len(equipe)); c6.metric("Total Geral", len(parts)); c7.metric("Quartos", len(load_rooms(eid))); c8.metric("","")
 
-    # ─── GRÁFICOS DE PIZZA (Acompanhamento de Recebimentos) ───
+    # ─── GRÁFICOS DE PIZZA E ATUALIZAÇÃO ───
     st.divider()
-    st.markdown("### 📈 Progresso de Recebimentos")
-    
+    col_title, col_btn = st.columns([3, 1])
+    with col_title:
+        st.markdown("### 📈 Progresso de Recebimentos")
+    with col_btn:
+        if st.button("🔄 Atualizar Dados Agora", type="primary", use_container_width=True):
+            with st.spinner("Buscando no Google Drive..."):
+                if ev.get("LettersSheetUrl"): _do_load_letters(eid, ev["LettersSheetUrl"])
+                if ev.get("PhotosSheetUrl"): _do_load_photos(eid, ev["PhotosSheetUrl"])
+                st.rerun()
+
     letters = st.session_state.get(f"letters_data_{eid}", {})
     photo_groups = st.session_state.get(f"photo_groups_{eid}", {})
 
@@ -629,12 +637,15 @@ def page_dashboard(eid, ev):
 
     total_enc = len(enc)
     if total_enc > 0:
-        # A lógica correta: iterar pelos encontristas do banco e ver se eles tem arquivo recebido
-        recebeu_carta = sum(1 for p in enc if count_letters(p["Name"]) > 0)
-        nao_recebeu_carta = total_enc - recebeu_carta
+        # Lógica exata: Varre cada encontrista e checa se ele tem cartas/fotos
+        faltam_cartas = [p for p in enc if count_letters(p["Name"]) == 0]
+        faltam_fotos = [p for p in enc if count_photos(p["Name"]) == 0]
+
+        recebeu_carta = total_enc - len(faltam_cartas)
+        nao_recebeu_carta = len(faltam_cartas)
         
-        recebeu_foto = sum(1 for p in enc if count_photos(p["Name"]) > 0)
-        nao_recebeu_foto = total_enc - recebeu_foto
+        recebeu_foto = total_enc - len(faltam_fotos)
+        nao_recebeu_foto = len(faltam_fotos)
 
         _, col_chart1, col_chart2, _ = st.columns([1, 4, 4, 1])
         
@@ -703,6 +714,27 @@ def page_dashboard(eid, ev):
                 fig2.gca().add_artist(centre_circle)
                 ax2.axis('equal')
                 st.pyplot(fig2)
+
+        # --- TABELAS DE QUEM FALTA ---
+        st.divider()
+        col_tab1, col_tab2 = st.columns(2)
+        
+        with col_tab1:
+            st.markdown("🚨 **Encontristas SEM Cartas**")
+            if faltam_cartas:
+                df_c = pd.DataFrame([{"Nome do Encontrista": p["Name"], "GC": p.get("ConnectionGroup") or "-"} for p in faltam_cartas])
+                st.dataframe(df_c, hide_index=True, use_container_width=True)
+            else:
+                st.success("Todos os encontristas já receberam cartas!")
+
+        with col_tab2:
+            st.markdown("🚨 **Encontristas SEM Fotos**")
+            if faltam_fotos:
+                df_f = pd.DataFrame([{"Nome do Encontrista": p["Name"], "GC": p.get("ConnectionGroup") or "-"} for p in faltam_fotos])
+                st.dataframe(df_f, hide_index=True, use_container_width=True)
+            else:
+                st.success("Todos os encontristas já receberam fotos!")
+
     else:
         st.info("Nenhum encontrista cadastrado para gerar os gráficos.")
 
