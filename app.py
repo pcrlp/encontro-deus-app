@@ -1,6 +1,6 @@
 """
 Gestão Encontro com Deus — Streamlit + Supabase
-Versão Final - Etiquetas Centralizadas + Checkboxes Otimizados
+Versão Final - Etiquetas Perfeitas + Botão Atualizar na Secretaria
 """
 import streamlit as st
 import pandas as pd
@@ -23,51 +23,58 @@ def inject_custom_css():
     /* Força textos para cor escura e fundo principal claro */
     .stApp { background-color: #f8fafc; color: #1e293b; }
     
+    /* FORÇA TEXTO ESCURO (Resolve o problema do celular em Modo Escuro) */
+    p, span, h1, h2, h3, h4, h5, h6, label, li {
+        color: #1e293b !important;
+    }
+
     /* Neumorphic/SaaS Containers - Light */
     div[data-testid="stContainer"] {
         border: 1px solid #e2e8f0 !important;
         border-radius: 10px !important;
         background-color: #ffffff !important;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-        transition: all 0.2s ease;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
         padding: 1rem;
         margin-bottom: 1rem;
     }
-    div[data-testid="stContainer"]:hover {
-        border-color: #cbd5e1 !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    }
+    
+    /* Ajuste para as Métricas do Dashboard */
+    [data-testid="stMetricValue"] > div { color: #0f172a !important; }
+    [data-testid="stMetricLabel"] * { color: #475569 !important; }
 
     /* Primary Buttons - Blue */
     .stButton>button[kind="primary"] {
         background-color: #2563eb !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
         border: none !important;
         border-radius: 6px !important;
     }
-    .stButton>button[kind="primary"]:hover {
-        background-color: #1d4ed8 !important;
+    .stButton>button[kind="primary"] * {
+        color: #ffffff !important;
+        font-weight: 600 !important;
     }
     
     /* Download Buttons - Green */
     .stDownloadButton>button {
         background-color: #16a34a !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
         border: none !important;
         border-radius: 6px !important;
     }
-    .stDownloadButton>button:hover {
-        background-color: #15803d !important;
+    .stDownloadButton>button * {
+        color: #ffffff !important;
+        font-weight: 600 !important;
     }
     
-    /* Ajuste de cor nos expanders para modo claro */
+    /* Expanders */
     .streamlit-expanderHeader {
         background-color: #f1f5f9 !important;
         border-radius: 6px;
+    }
+    .streamlit-expanderHeader * {
         color: #0f172a !important;
     }
+    
+    /* Avisos (Success, Info, Warning) para não ficarem apagados */
+    div[data-testid="stAlert"] * { color: #0f172a !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1012,7 +1019,6 @@ def page_labels(eid, ev):
     parts_flagged = [p for p in filtered_lbl if p["Id"] in st.session_state[flag_key]]
     parts_to_print = [p for p in parts_flagged for _ in range(int(repeat_qty))]
     
-    # ─── BOTÕES DE DOWNLOAD NO TOPO ───
     if parts_to_print:
         st.info(f"📄 **{len(parts_to_print)}** etiqueta(s) selecionada(s) para impressão.")
         b1, b2 = st.columns(2)
@@ -1026,7 +1032,6 @@ def page_labels(eid, ev):
         st.warning("Nenhuma etiqueta selecionada. Marque os participantes abaixo.")
 
     st.markdown(f"**Lista de Participantes ({len(filtered_lbl)})**")
-    
     for p in filtered_lbl:
         pid = p["Id"]
         is_checked = pid in st.session_state[flag_key]
@@ -1141,6 +1146,22 @@ def page_photos(eid, ev):
 # ─── MÓDULO SECRETARIA ───────────────────────────────
 def page_secretary(eid, ev):
     st.markdown(f"## 🗂️ Secretaria — {ev['Name']}")
+    
+    col_title, col_btn = st.columns([3, 1])
+    with col_title:
+        st.write("") # Espaço vazio para alinhar o botão à direita
+    with col_btn:
+        if st.button("🔄 Atualizar Cartas/Fotos", type="primary", use_container_width=True, key="btn_update_sec"):
+            has_error = False
+            with st.spinner("Buscando no Google Drive..."):
+                if ev.get("LettersSheetUrl"):
+                    ok, msg = _do_load_letters(eid, ev["LettersSheetUrl"])
+                    if not ok: st.error(f"Erro nas Cartas: {msg}"); has_error = True
+                if ev.get("PhotosSheetUrl"):
+                    ok, msg = _do_load_photos(eid, ev["PhotosSheetUrl"])
+                    if not ok: st.error(f"Erro nas Fotos: {msg}"); has_error = True
+            if not has_error: st.rerun()
+
     parts  = load_participants(eid); assigns = load_assignments(eid); rooms = load_rooms(eid)
     enc    = [p for p in parts if is_encounterist(p.get("Category"))]
     rm     = {r["Id"]: r["Name"] for r in rooms}; pr = {a["ParticipantId"]: rm.get(a["RoomId"], "-") for a in assigns}
